@@ -11,5 +11,19 @@
     "TerritoryIds": [
       1263
     ]
+  },
+  {
+    "Name": "SimpleScript",
+    "Guid": "d3b6a9b4-1e0e-4e0c-b7c7-ff1fce0e6cf4",
+    "Version": "0.0.0.3",
+    "Author": "Karlin",
+    "Repo": "",
+    "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/yoyokity/SimpleScript.cs",
+    "Note": "这是一个提示文本.\n他有多行显示.\n请在这里放置你的提示文本",
+    "UpdateInfo": "这里是更新信息.\n他有多行显示.\n请在这里放置你的更新信息",
+    "TerritoryIds": [
+      179,
+      979
+    ]
   }
 ]
