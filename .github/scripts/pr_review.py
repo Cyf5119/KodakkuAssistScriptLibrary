@@ -468,14 +468,14 @@ def validate_entry(idx, entry, path, cfg, errors, warnings, guid_seen, name_seen
         else:
             name_seen[name.strip()] = idx
 
-    if "TerritoryIds" not in entry:
-        errors.append(f"{label}：缺少必填字段 TerritoryIds")
-    elif not isinstance(entry["TerritoryIds"], list):
+    # TerritoryIds 可以省略，等同于空数组（脚本在所有区域生效）
+    territory_ids = entry.get("TerritoryIds")
+    if territory_ids is not None and not isinstance(territory_ids, list):
         errors.append(
-            f"{label}：TerritoryIds 必须是整数数组，实际是{type_name(entry['TerritoryIds'])}"
+            f"{label}：TerritoryIds 必须是整数数组，实际是{type_name(territory_ids)}"
         )
-    else:
-        for pos, tid in enumerate(entry["TerritoryIds"]):
+    elif isinstance(territory_ids, list):
+        for pos, tid in enumerate(territory_ids):
             if isinstance(tid, bool) or not isinstance(tid, int):
                 errors.append(f"{label}：TerritoryIds[{pos}] 必须是整数，实际是{type_name(tid)}")
             elif not 0 <= tid <= UINT_MAX:

@@ -314,9 +314,13 @@ def run_merge_repos_checks() -> list[str]:
         expect("深层子目录 DownloadUrl 正确",
                by_name["A3"]["DownloadUrl"].endswith("/alice/_draft/A3.cs"),
                by_name["A3"]["DownloadUrl"])
-        expect("字段齐全且顺序规范",
-               list(by_name["A1"].keys()) == CANONICAL_FIELD_ORDER, str(list(by_name["A1"].keys())))
-        expect("Repo 留空", by_name["A1"]["Repo"] == "")
+        keys_a1 = list(by_name["A1"].keys())
+        expect("字段顺序规范且省略空值",
+               keys_a1 == [k for k in CANONICAL_FIELD_ORDER if k in keys_a1]
+               and all(by_name["A1"][k] not in ("", [], None) for k in keys_a1), str(keys_a1))
+        expect("Repo / Note / UpdateInfo 为空时被省略",
+               all(k not in by_name["A1"] for k in ("Repo", "Note", "UpdateInfo")),
+               str(by_name["A1"]))
         expect("TerritoryIds 正确", by_name["B2"]["TerritoryIds"] == [1226, 1228],
                str(by_name["B2"]["TerritoryIds"]))
 

@@ -12,6 +12,7 @@
   - 每个 .cs 用 pr_review.validate_script_file 校验（与 PR 审核同一套规则）
   - DownloadUrl 自动填成本仓库该 .cs 的 raw 直链
   - UpdateTime 取该 .cs 的最后提交时间（UTC），未提交时退回文件修改时间
+  - 值为空的字段（Note / UpdateInfo / UpdateTime / TerritoryIds 等）直接省略
   - 按「文件夹名 -> 文件路径」排序处理，保证输出稳定、可复现
   - 按 Guid（忽略大小写）去重：先出现的生效，冲突列入报告
 
@@ -42,7 +43,6 @@ CANONICAL_FIELD_ORDER = [
     "Guid",
     "Version",
     "Author",
-    "Repo",
     "DownloadUrl",
     "Note",
     "UpdateInfo",
@@ -149,21 +149,27 @@ def last_update_time(repo_root, rel_path):
 
 
 def build_entry(meta, repo, branch, rel_path, update_time):
-    """把 validate_script_file 的 meta 组装成 OnlineScriptInfo 字段，并规范字段顺序。"""
+    """把 validate_script_file 的 meta 组装成 OnlineScriptInfo 字段。
+
+    字段顺序固定；值为空（空串 / 空数组）的字段直接省略，插件端会回退到默认值。
+    `Repo` 由插件在订阅时用当前订阅地址覆盖，所以永远不写。
+    """
     entry = {
         "Name": meta["name"],
         "Guid": meta["guid"],
         "Version": meta["version"],
         "Author": meta["author"],
-        # Repo 会被插件用当前订阅地址覆盖，留空即可
-        "Repo": "",
         "DownloadUrl": download_url(repo, branch, rel_path),
         "Note": meta["note"],
         "UpdateInfo": meta["update_info"],
         "UpdateTime": update_time,
         "TerritoryIds": meta["territorys"],
     }
-    return {key: entry[key] for key in CANONICAL_FIELD_ORDER if key in entry}
+    return {
+        key: entry[key]
+        for key in CANONICAL_FIELD_ORDER
+        if key in entry and entry[key] not in ("", [], None)
+    }
 
 
 def collect(repo_root, cfg, repo, branch):
