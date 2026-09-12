@@ -1,0 +1,65 @@
+name: PR Auto Review
+
+# 用 pull_request_target 而非 pull_request：
+# pull_request_target 在工作流所在分支（默认分支）的上下文里运行，对来自 fork 的 PR
+# 同样拥有 contents/pull-requests 写权限，因此才能自动合并。
+# 安全前提：本工作流只检出「默认分支」的审核脚本，绝不检出或执行 PR 里的代码，
+# 仅通过 API 把 PR 里的 .json 当作文本数据读取。
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: write # 合并 PR
+  pull-requests: write # 留言 / 合并
+
+# 同一个 PR 只保留最新一次审核，避免连推多个提交时并发合并
+concurrency:
+  group: pr-auto-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: 校验并自动合并
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 检出默认分支（仅获取审核脚本，不检出 PR 代码）
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: 审核 PR
+        id: review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 .github/scripts/pr_review.py
+
+      - name: 自动合并（squash）
+        if: ${{ success() }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          gh pr merge "$PR_NUMBER" \
+            --repo "$REPO" \
+            --squash \
+            --match-head-commit "$PR_HEAD_SHA"
+
+      - name: 合并失败时留言说明
+        if: ${{ failure() && steps.review.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr comment "$PR_NUMBER" --repo "$REPO" \
+            --body "文件校验已通过，但自动合并失败。常见原因：分支保护要求人工审核、存在合并冲突、仓库未开启可写权限。请维护者手动处理。"

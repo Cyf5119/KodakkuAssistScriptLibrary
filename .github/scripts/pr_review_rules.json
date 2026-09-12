@@ -1,0 +1,8 @@
+{
+  "username_case_insensitive": true,
+  "allow_subfolders": true,
+  "required_filename": null,
+  "unknown_fields": "warn",
+  "max_files_per_pr": 100,
+  "maintainers": []
+}
