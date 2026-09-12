@@ -97,6 +97,43 @@ KodakkuAssistScriptLibrary/
   请关闭该限制，或把 `github-actions[bot]` 加入允许列表。
   另外不要把本工作流设为 Required status check——一旦脚本本身出问题，失败状态会连手动合并也一起挡住。
 - 建议开启 **Settings → General → Automatically delete head branches**（工作流没有用 `--delete-branch`，因为它对 fork 分支常常无权限）。
+- **Pages**：**Settings → Pages → Source** 选 **GitHub Actions**。
+  如果 `github-pages` 环境配了 required reviewers，部署会一直卡住等待人工批准，需要去掉。
+- `pr-auto-review.yml` 需要 `actions: write` 权限来触发 Pages 重新生成，已在文件里声明；
+  若组织的默认 token 权限策略更严，可能需要在组织层面放开。
+
+## 合并索引（GitHub Pages）
+
+本库通过 GitHub Pages 提供一份把所有贡献者 JSON 合并后的索引：
+
+| 地址 | 内容 |
+| --- | --- |
+| `https://<owner>.github.io/<repo>/index.json` | 合并后的数组，填进 KodakkuAssist 的 `OnlineRepo` 即可订阅全库 |
+| `https://<owner>.github.io/<repo>/` | 说明页，列出贡献者、脚本数量和冲突提示 |
+
+合并由 [`.github/scripts/merge_repos.py`](.github/scripts/merge_repos.py) 完成：
+
+- 只扫描第一层里非 `.` / `_` 开头的目录（即贡献者文件夹），递归收集 `.json`；
+- 每个文件先按**与 PR 审核完全相同**的规则校验（直接复用 `pr_review.py`，避免两处规则漂移），不合规的文件跳过并列入构建报告；
+- 按 `Guid`（忽略大小写）去重，先出现的生效，冲突在报告中列出；
+- 输出按固定字段顺序排布，保证结果稳定、可比对。
+
+触发方式有两种，缺一不可：`push` 到 `main`，以及 `workflow_dispatch`。后者是必需的——自动合并用的是 `GITHUB_TOKEN`，而 GitHub 规定 `GITHUB_TOKEN` 触发的 `push` 不会再触发新的 workflow（`workflow_dispatch` / `repository_dispatch` 是仅有的两个例外）。所以自动合并成功后，`pr-auto-review.yml` 会用 `gh workflow run` 显式派发一次 Pages 构建，否则索引永远停在旧版本。
+
+想让**根路径**直接返回 JSON（而不是给浏览器看说明页），把 `pages.yml` 里的命令改成：
+
+```bash
+python3 .github/scripts/merge_repos.py --out _site --root-json
+```
+
+插件是用 `GetStringAsync` 读取索引的，不检查 `Content-Type`，所以根路径返回 JSON 也能正常订阅。
+
+本地预览与自检：
+
+```bash
+python .github/scripts/merge_repos.py --out _site   # 生成站点到 _site/
+python .github/scripts/merge_repos.py --selftest    # 内置自测，不写文件
+```
 
 ## 本地校验（提 PR 前自检）
 

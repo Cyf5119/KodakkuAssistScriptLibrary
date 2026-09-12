@@ -12,6 +12,7 @@ on:
 permissions:
   contents: write # 合并 PR
   pull-requests: write # 留言 / 合并
+  actions: write # 合并后 dispatch Pages workflow（GITHUB_TOKEN 不能靠 push 触发它）
 
 # 同一个 PR 只保留最新一次审核，避免连推多个提交时并发合并
 concurrency:
@@ -26,7 +27,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: 检出默认分支（仅获取审核脚本，不检出 PR 代码）
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
@@ -42,6 +43,7 @@ jobs:
         run: python3 .github/scripts/pr_review.py
 
       - name: 自动合并（squash）
+        id: merge
         if: ${{ success() }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -54,8 +56,17 @@ jobs:
             --squash \
             --match-head-commit "$PR_HEAD_SHA"
 
+      # GITHUB_TOKEN 触发的 push 不会再触发 push 事件，所以必须显式 dispatch Pages workflow
+      - name: 触发 Pages 重新生成索引
+        if: ${{ success() }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: gh workflow run pages.yml --repo "$REPO" --ref "$DEFAULT_BRANCH"
+
       - name: 合并失败时留言说明
-        if: ${{ failure() && steps.review.outcome == 'success' }}
+        if: ${{ failure() && steps.merge.outcome == 'failure' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
