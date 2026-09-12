@@ -8,6 +8,7 @@
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/Karlin-Z/M1s.cs",
     "Note": "",
     "UpdateInfo": "",
+    "UpdateTime": "2026-09-12T05:46:17Z",
     "TerritoryIds": [
       1226
     ]
@@ -21,6 +22,7 @@
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/Karlin-Z/M2S.cs",
     "Note": "",
     "UpdateInfo": "",
+    "UpdateTime": "2026-09-12T05:46:17Z",
     "TerritoryIds": [
       1228
     ]
@@ -34,6 +36,7 @@
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/Karlin-Z/M3S.cs",
     "Note": "",
     "UpdateInfo": "修复P2地面炸弹处理位置因插件更新导致的问题",
+    "UpdateTime": "2026-09-12T05:46:17Z",
     "TerritoryIds": [
       1230
     ]
@@ -47,6 +50,7 @@
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/Karlin-Z/M4S.cs",
     "Note": "",
     "UpdateInfo": "",
+    "UpdateTime": "2026-09-12T05:46:17Z",
     "TerritoryIds": [
       1232
     ]
@@ -60,6 +64,7 @@
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/Karlin-Z/M5s.cs",
     "Note": "",
     "UpdateInfo": "1.增加九字切地火绘图\n2.增加俄罗斯方块安全区绘图",
+    "UpdateTime": "2026-09-12T05:46:17Z",
     "TerritoryIds": [
       1257
     ]
@@ -73,6 +78,7 @@
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/Karlin-Z/M6s.cs",
     "Note": "M6S 扩充绘图脚本\n目前包含以下内容:\n1.扩充绘制（非所有机制，请配合Usami脚本使用）\n2.动物园阶段T拉怪路线指示\n3.动物园第二轮引导鱼自动选择（须设置引导左右），第四轮鱼自动选择（根据职能分配）\n4.动物园阶段近战自动选马",
     "UpdateInfo": "1.增加第四轮动物园选马",
+    "UpdateTime": "2026-09-12T05:46:17Z",
     "TerritoryIds": [
       1259
     ]
@@ -86,6 +92,7 @@
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/Karlin-Z/M6sPiPi.cs",
     "Note": "",
     "UpdateInfo": "",
+    "UpdateTime": "2026-09-12T05:46:17Z",
     "TerritoryIds": [
       1259
     ]
@@ -99,6 +106,7 @@
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/Karlin-Z/M7s.cs",
     "Note": "",
     "UpdateInfo": "",
+    "UpdateTime": "2026-09-12T05:46:17Z",
     "TerritoryIds": [
       1261
     ]
@@ -112,6 +120,7 @@
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/Karlin-Z/M7sPiPi.cs",
     "Note": "",
     "UpdateInfo": "",
+    "UpdateTime": "2026-09-12T05:46:17Z",
     "TerritoryIds": [
       1261
     ]
@@ -125,6 +134,7 @@
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/Karlin-Z/M8s.cs",
     "Note": "",
     "UpdateInfo": "",
+    "UpdateTime": "2026-09-12T05:46:17Z",
     "TerritoryIds": [
       1263
     ]
@@ -138,6 +148,7 @@
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/Karlin-Z/OmegaProtocolUltimate.cs",
     "Note": "欧米茄验证绝境战",
     "UpdateInfo": "适配新版插件",
+    "UpdateTime": "2026-09-12T05:46:17Z",
     "TerritoryIds": [
       1122
     ]
@@ -151,6 +162,7 @@
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/Karlin-Z/PiPiScript.cs",
     "Note": "这是一个提示文本.\n他有多行显示.\n请在这里放置你的提示文本",
     "UpdateInfo": "",
+    "UpdateTime": "2026-09-12T05:46:17Z",
     "TerritoryIds": []
   },
   {
@@ -162,6 +174,7 @@
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/Karlin-Z/%E5%A4%9A%E5%8F%98%E8%BF%B7%E5%AE%AB%E8%87%AA%E5%8A%A8%E5%8C%96.cs",
     "Note": "",
     "UpdateInfo": "",
+    "UpdateTime": "2026-09-12T05:46:17Z",
     "TerritoryIds": [
       1069,
       1137,
@@ -177,6 +190,7 @@
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/Karlin-Z/%E5%B9%BB%E6%83%B3%E9%BE%99%E8%AF%97%E7%BB%9D%E5%A2%83%E6%88%98.cs",
     "Note": "",
     "UpdateInfo": "",
+    "UpdateTime": "2026-09-12T05:46:17Z",
     "TerritoryIds": [
       968
     ]
@@ -190,6 +204,7 @@
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/Karlin-Z/%E6%9E%81%E4%BD%90%E6%8B%89%E5%8A%A0.cs",
     "Note": "",
     "UpdateInfo": "",
+    "UpdateTime": "2026-09-12T05:46:17Z",
     "TerritoryIds": [
       1201
     ]
@@ -203,6 +218,7 @@
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/Karlin-Z/%E6%9E%81%E8%89%B3%E7%BF%BC%E8%9B%87%E9%B8%9F.cs",
     "Note": "",
     "UpdateInfo": "",
+    "UpdateTime": "2026-09-12T05:46:17Z",
     "TerritoryIds": [
       1196
     ]
@@ -216,6 +232,7 @@
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/Karlin-Z/%E7%BB%9D%E4%BC%8A%E7%94%B8.cs",
     "Note": "绝伊甸先行版 P4结束\nP3地火站位和水分摊尚无\nP4白圈指示尚无",
     "UpdateInfo": "",
+    "UpdateTime": "2026-09-12T05:46:17Z",
     "TerritoryIds": [
       1238
     ]
@@ -229,6 +246,7 @@
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/Karlin-Z/%E7%BB%9D%E5%8D%A1%E5%A4%AB%E5%8D%A1.cs",
     "Note": "",
     "UpdateInfo": "精修  P1\n增加分摊击退指示\n增加连线岩石范围",
+    "UpdateTime": "2026-09-12T05:46:17Z",
     "TerritoryIds": [
       1363
     ]
@@ -242,6 +260,7 @@
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/Karlin-Z/%E9%87%91%E7%A2%9F%E5%B0%8F%E5%8A%A9%E6%89%8B.cs",
     "Note": "",
     "UpdateInfo": "",
+    "UpdateTime": "2026-09-12T05:46:17Z",
     "TerritoryIds": [
       144
     ]
