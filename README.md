@@ -173,9 +173,8 @@ python .github/scripts/pr_review.py --check-json OnlineRepo.json
 # 本地生成索引预览（输出到 _site/）
 python .github/scripts/merge_repos.py --out _site
 
-# 内置自测（不联网，验证脚本自身逻辑）
-python .github/scripts/pr_review.py --selftest
-python .github/scripts/merge_repos.py --selftest
+# 内置自测（不联网，验证审核与合并脚本自身的规则，CI 每次构建前都会跑）
+python .github/scripts/tests/selftest.py
 ```
 
 ## 可调规则

@@ -36,6 +36,10 @@ jobs:
       - name: 配置 Pages
         uses: actions/configure-pages@v6
 
+      # 审核/合并脚本自身的规则自测，改坏了会在这里立刻失败，避免发布错误索引
+      - name: 运行内置自测
+        run: python3 .github/scripts/tests/selftest.py
+
       - name: 扫描 .cs 并生成合并索引
         run: python3 .github/scripts/merge_repos.py --out _site
 
@@ -75,11 +79,11 @@ jobs:
       - name: 有变化才提交
         run: |
           if [ -z "$(git status --porcelain -- OnlineRepo.json .github/index/guid-map.json)" ]; then
-            echo "索引与 guid 映射表都没有变化，跳过提交"
+            echo "索引没有变化，跳过提交"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add OnlineRepo.json .github/index/guid-map.json
-          git commit -m "chore: 自动更新 OnlineRepo.json 与 guid 映射表"
+          git commit -m "chore: 自动更新 OnlineRepo.json"
           git push

@@ -135,6 +135,7 @@ def default_config() -> dict:
 
 
 def load_config() -> dict:
+    """读取 pr_review_rules.json，覆盖默认配置；文件缺失或损坏时退回默认值。"""
     cfg = default_config()
     try:
         with open(CONFIG_PATH, "r", encoding="utf-8") as fh:
@@ -149,6 +150,7 @@ def load_config() -> dict:
 
 
 def normalize_login(login: str, case_insensitive: bool) -> str:
+    """规范化登录名以便比较；GitHub 用户名本身不区分大小写。"""
     login = (login or "").strip()
     return login.lower() if case_insensitive else login
 
@@ -246,8 +248,6 @@ def validate_script_file(text: str, rel_path: str, folder_owner: str, cfg: dict)
         for item in parse_errors:
             err(item)
         return None, errors, warnings
-
-    explicit = set(params)
 
     # 参数值解析不出来时直接报原文，避免后面用「实际是null」这类看不懂的措辞
     for field, (kind, value) in list(params.items()):
@@ -376,11 +376,9 @@ def validate_script_file(text: str, rel_path: str, folder_owner: str, cfg: dict)
         "name": name,
         "version": version,
         "author": author,
-        "author_explicit": "author" in explicit,
         "note": note,
         "update_info": update_info,
         "territorys": territorys,
-        "explicit": explicit,
     }, errors, warnings
 
 
@@ -425,6 +423,7 @@ def validate_json_document(text: str, path: str, cfg: dict):
 
 
 def validate_entry(idx, entry, path, cfg, errors, warnings, guid_seen, name_seen):
+    """校验生成结果里的单个条目，并把 guid / name 记入去重表。"""
     label = f"{path}[{idx}]"
 
     if not isinstance(entry, dict):
@@ -502,6 +501,7 @@ API_URL = os.environ.get("GITHUB_API_URL", "https://api.github.com")
 
 
 def _api_headers(accept: str) -> dict:
+    """构造 GitHub API 请求头，带 token 时附带 Authorization。"""
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or ""
     headers = {
         "Accept": accept,
@@ -514,6 +514,7 @@ def _api_headers(accept: str) -> dict:
 
 
 def api_json(path: str):
+    """GET 一个 API 路径并解析 JSON。"""
     request = urllib.request.Request(
         f"{API_URL}{path}", headers=_api_headers("application/vnd.github+json")
     )
@@ -523,6 +524,7 @@ def api_json(path: str):
 
 
 def api_raw(path: str) -> bytes:
+    """GET 一个 API 路径并取原始字节。"""
     request = urllib.request.Request(
         f"{API_URL}{path}", headers=_api_headers("application/vnd.github.raw")
     )
@@ -531,6 +533,7 @@ def api_raw(path: str) -> bytes:
 
 
 def list_changed_files(repo: str, pr_number: str) -> list:
+    """分页拉取 PR 改动的文件列表。"""
     files: list = []
     page = 1
     while True:
@@ -653,10 +656,9 @@ def check_change_set(files, author, cfg):
             f"你的文件夹 {author}/ 在 ignore_dirs 排除名单里，不会被收录；请联系维护者"
         )
 
-    if author in (cfg.get("maintainers") or []):
-        warnings.append(f"{author} 在维护者白名单中，跳过「只能修改自己文件夹」限制")
-
     bypass = author in (cfg.get("maintainers") or [])
+    if bypass:
+        warnings.append(f"{author} 在维护者白名单中，跳过「只能修改自己文件夹」限制")
 
     for item in files:
         status = item.get("status", "changed")
@@ -679,6 +681,7 @@ def check_change_set(files, author, cfg):
 
 
 def describe(files, errors, warnings):
+    """生成报告正文：改动清单 + 错误 + 提醒。"""
     lines = ["### 改动清单", "", "| 状态 | 文件 |", "| --- | --- |"]
     for label, path in files:
         lines.append(f"| {label} | `{path}` |")
@@ -710,10 +713,12 @@ def describe(files, errors, warnings):
 
 
 def build_report(title, rows, errors, warnings):
+    """拼出完整的 PR 评论内容。"""
     return "\n".join([f"## 🤖 PR 自动审核：{title}", "", describe(rows, errors, warnings)])
 
 
 def write_step_summary(markdown: str):
+    """追加到 Actions 运行摘要；不在 Actions 环境下静默跳过。"""
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
         try:
@@ -724,6 +729,7 @@ def write_step_summary(markdown: str):
 
 
 def post_comment(repo: str, pr_number: str, body: str):
+    """在 PR 下发一条评论。"""
     request = urllib.request.Request(
         f"{API_URL}/repos/{repo}/issues/{pr_number}/comments",
         data=json.dumps({"body": body}).encode("utf-8"),
@@ -734,7 +740,16 @@ def post_comment(repo: str, pr_number: str, body: str):
         response.read()
 
 
+def post_comment_safely(repo: str, pr_number: str, body: str):
+    """在 PR 下留言；失败只告警，不影响审核结论。"""
+    try:
+        post_comment(repo, pr_number, body)
+    except Exception as exc:  # noqa: BLE001
+        print(f"::warning::无法在 PR 下留言：{exc}")
+
+
 def run_ci() -> int:
+    """CI 入口：审核 PR 并输出报告。返回 0 通过 / 1 未通过 / 2 无法执行。"""
     repo = os.environ.get("GITHUB_REPOSITORY", "")
     pr_number = os.environ.get("PR_NUMBER", "")
     author = os.environ.get("PR_AUTHOR", "")
@@ -796,13 +811,13 @@ def run_ci() -> int:
             if meta:
                 script_guids.append((path, meta["guid"]))
 
-        # guid 查重：拿仓库里已提交的映射表比对（改名/移动自己的文件不算冲突）
-        own_paths = set()
-        for item in files:
-            if item.get("filename"):
-                own_paths.add(item["filename"])
-            if item.get("previous_filename"):
-                own_paths.add(item["previous_filename"])
+        # guid 查重：拿仓库里已提交的映射表比对（改名 / 移动自己的文件不算冲突）
+        own_paths = {
+            item[key]
+            for item in files
+            for key in ("filename", "previous_filename")
+            if item.get(key)
+        }
 
         base_ref = os.environ.get("PR_BASE_REF") or os.environ.get("PR_BASE_SHA", "")
         guid_map = None
@@ -818,20 +833,14 @@ def run_ci() -> int:
         report = build_report("❌ 未通过", rows, errors, warnings)
         print(report)
         write_step_summary(report)
-        try:
-            post_comment(repo, pr_number, report)
-        except Exception as exc:  # noqa: BLE001
-            print(f"::warning::无法在 PR 下留言：{exc}")
+        post_comment_safely(repo, pr_number, report)
         return 1
 
     report = build_report("✅ 通过", rows, errors, warnings)
     print(report)
     write_step_summary(report)
     if warnings:
-        try:
-            post_comment(repo, pr_number, report + "\n校验通过，将自动 squash 合并。")
-        except Exception as exc:  # noqa: BLE001
-            print(f"::warning::无法在 PR 下留言：{exc}")
+        post_comment_safely(repo, pr_number, report + "\n校验通过，将自动 squash 合并。")
     return 0
 
 
@@ -840,21 +849,28 @@ def run_ci() -> int:
 # --------------------------------------------------------------------------- #
 
 
+def read_utf8(path):
+    """读取文件并解码为 UTF-8，返回 (文本, 退出码)；读取或解码失败时文本为 None。"""
+    try:
+        with open(path, "rb") as fh:
+            data = fh.read()
+    except OSError as exc:
+        print(f"{path}：无法读取 —— {exc}")
+        return None, 2
+    try:
+        return data.decode("utf-8"), 0
+    except UnicodeDecodeError as exc:
+        print(f"{path}：不是合法的 UTF-8 编码（{exc}）")
+        return None, 1
+
+
 def cmd_check_json(paths, cfg) -> int:
+    """校验生成的 OnlineRepo.json。"""
     exit_code = 0
     for path in paths:
-        try:
-            with open(path, "rb") as fh:
-                data = fh.read()
-        except OSError as exc:
-            print(f"{path}：无法读取 —— {exc}")
-            exit_code = 2
-            continue
-        try:
-            text = data.decode("utf-8")
-        except UnicodeDecodeError as exc:
-            print(f"{path}：不是合法的 UTF-8 编码（{exc}）")
-            exit_code = 1
+        text, code = read_utf8(path)
+        if text is None:
+            exit_code = code
             continue
         errors, warnings = validate_json_document(text, path, cfg)
         for item in warnings:
@@ -886,23 +902,14 @@ def infer_owner(path: str) -> str:
 
 
 def cmd_check_cs(paths, owner, cfg) -> int:
+    """校验本地 .cs 文件；owner 决定 author 缺失时回退成什么。"""
     exit_code = 0
     for path in paths:
-        try:
-            with open(path, "rb") as fh:
-                data = fh.read()
-        except OSError as exc:
-            print(f"{path}：无法读取 —— {exc}")
-            exit_code = 2
+        text, code = read_utf8(path)
+        if text is None:
+            exit_code = code
             continue
-        try:
-            text = data.decode("utf-8")
-        except UnicodeDecodeError as exc:
-            print(f"{path}：不是合法的 UTF-8 编码（{exc}）")
-            exit_code = 1
-            continue
-        folder_owner = owner or infer_owner(path)
-        meta, errors, warnings = validate_script_file(text, path, folder_owner, cfg)
+        meta, errors, warnings = validate_script_file(text, path, owner or infer_owner(path), cfg)
         for item in warnings:
             print(f"⚠️  {item}")
         for item in errors:
@@ -919,6 +926,7 @@ def cmd_check_cs(paths, owner, cfg) -> int:
 
 
 def cmd_path_check(author, paths, cfg) -> int:
+    """校验路径规则。"""
     exit_code = 0
     for path in paths:
         errors: list[str] = []
@@ -932,199 +940,18 @@ def cmd_path_check(author, paths, cfg) -> int:
     return exit_code
 
 
-def cmd_selftest() -> int:
-    cfg = default_config()
-    failures: list[str] = []
-
-    def expect(name, condition, detail=""):
-        if condition:
-            print(f"✅ {name}")
-        else:
-            failures.append(name)
-            print(f"❌ {name} {detail}")
-
-    GUID = "8010d865-7d6d-4c23-92e0-f4b0120e18ac"
-    good_cs = (
-        '[ScriptType(name: "M1s绘图", territorys: [1226], guid: "' + GUID + '", '
-        'version: "0.0.0.9", author: "Karlin")]\npublic class M1s { }\n'
-    )
-
-    meta, errors, warnings = validate_script_file(good_cs, "Karlin-Z/M1s.cs", "Karlin-Z", cfg)
-    expect("合法 .cs 通过", not errors and meta is not None, str(errors))
-    expect("字段提取正确",
-           meta and meta["name"] == "M1s绘图" and meta["guid"] == GUID
-           and meta["version"] == "0.0.0.9" and meta["author"] == "Karlin"
-           and meta["territorys"] == [1226], str(meta))
-    expect("合法 .cs 无提醒", not warnings, str(warnings))
-
-    # author 回退到文件夹名
-    no_author = good_cs.replace(', author: "Karlin"', "")
-    meta, errors, _ = validate_script_file(no_author, "publisher/A.cs", "publisher", cfg)
-    expect("缺 author 时用文件夹名", not errors and meta["author"] == "publisher", str(errors))
-
-    unknown_author = good_cs.replace('"Karlin"', '"Unknown"')
-    meta, errors, warnings = validate_script_file(unknown_author, "publisher/A.cs", "publisher", cfg)
-    expect("author=Unknown 时用文件夹名", not errors and meta["author"] == "publisher", str(errors))
-    expect("author 回退有提醒", any("文件夹名" in w for w in warnings), str(warnings))
-
-    # 结构性错误
-    _m, errors, _w = validate_script_file("class X {}", "a/A.cs", "a", cfg)
-    expect("没有特性被拒绝", bool(errors))
-
-    two = good_cs + good_cs
-    _m, errors, _w = validate_script_file(two, "a/A.cs", "a", cfg)
-    expect("两处特性被拒绝", any("只能有一处" in e for e in errors), str(errors))
-
-    commented = "// " + good_cs.replace("\n", " ") + "\n" + good_cs
-    meta, errors, _w = validate_script_file(commented, "a/A.cs", "a", cfg)
-    expect("注释里的特性不计数", not errors and meta is not None, str(errors))
-
-    no_name = good_cs.replace('name: "M1s绘图", ', "")
-    meta, errors, warnings = validate_script_file(no_name, "a/A.cs", "a", cfg)
-    expect("缺 name 用默认值并提醒",
-           not errors and meta["name"] == "Default Script" and any("name" in w for w in warnings))
-
-    # 字段值错误
-    for title, bad, needle in (
-        ("guid 为空", good_cs.replace(GUID, ""), "guid 不能为空"),
-        ("version 非法", good_cs.replace('"0.0.0.9"', '"v1.0"'), "版本号"),
-        ("territorys 为负数", good_cs.replace("[1226]", "[-1]"), "uint 范围"),
-        ("territorys 超 uint", good_cs.replace("[1226]", f"[{UINT_MAX + 1}]"), "uint 范围"),
-        ("territorys 是字符串数组", good_cs.replace("[1226]", '["1226"]'), "uint 数组"),
-    ):
-        _m, errors, _w = validate_script_file(bad, "a/A.cs", "a", cfg)
-        expect(f"{title} 被拒绝", any(needle in e for e in errors), str(errors))
-
-    traversal = good_cs.replace('"M1s绘图"', '"../../pwn"')
-    _m, errors, _w = validate_script_file(traversal, "a/A.cs", "a", cfg)
-    expect("name 含路径穿越被拒绝", any("文件名" in e for e in errors), str(errors))
-
-    reserved = good_cs.replace('"Karlin"', '"CON"')
-    _m, errors, _w = validate_script_file(reserved, "a/A.cs", "a", cfg)
-    expect("author 为 Windows 保留名被拒绝", any("保留" in e for e in errors), str(errors))
-
-    bad_guid = good_cs.replace(GUID, "d99c7e91-9b56-432d-a3a8-49a8586915b7e2a")
-    _m, errors, warnings = validate_script_file(bad_guid, "a/A.cs", "a", cfg)
-    expect("非标准 guid 仅提醒", not errors and any("UUID" in w for w in warnings), str(errors))
-
-    # 生成的 json 自检
-    doc = json.dumps([{
-        "Name": "M1s绘图", "Guid": GUID, "Version": "0.0.0.9", "Author": "Karlin",
-        "Repo": "", "DownloadUrl": "https://raw.githubusercontent.com/a/b/main/c.cs",
-        "Note": "", "UpdateInfo": "", "TerritoryIds": [1226],
-    }], ensure_ascii=False)
-    errors, warnings = validate_json_document(doc, "OnlineRepo.json", cfg)
-    expect("生成的 json 通过自检", not errors and not warnings, str(errors))
-    errors, _ = validate_json_document("{}", "OnlineRepo.json", cfg)
-    expect("生成的 json 顶层非数组被拒绝", bool(errors))
-
-    # 路径规则
-    def path_errors(path, author, config=None):
-        collected: list[str] = []
-        check_path_rules(path, author, config or cfg, collected, "路径")
-        return collected
-
-    expect("正确文件夹通过", not path_errors("Karlin-Z/M1s.cs", "Karlin-Z"))
-    expect("大小写不同通过", not path_errors("karlin-z/M1s.cs", "Karlin-Z"))
-    expect("子目录通过", not path_errors("Karlin-Z/sub/M1s.cs", "Karlin-Z"))
-    expect("改别人文件夹被拒绝", bool(path_errors("Other/M1s.cs", "Karlin-Z")))
-    expect("根目录文件被拒绝", bool(path_errors("M1s.cs", "Karlin-Z")))
-    expect("非 cs 文件被拒绝", bool(path_errors("Karlin-Z/data.json", "Karlin-Z")))
-    expect("路径穿越被拒绝", bool(path_errors("Karlin-Z/../Other/a.cs", "Karlin-Z")))
-    expect("绝对路径被拒绝", bool(path_errors("/Karlin-Z/a.cs", "Karlin-Z")))
-
-    strict_sub = copy.deepcopy(cfg)
-    strict_sub["allow_subfolders"] = False
-    expect("禁止子目录时被拒绝", bool(path_errors("Karlin-Z/sub/a.cs", "Karlin-Z", strict_sub)))
-
-    case_sensitive = copy.deepcopy(cfg)
-    case_sensitive["username_case_insensitive"] = False
-    expect("区分大小写时被拒绝", bool(path_errors("karlin-z/a.cs", "Karlin-Z", case_sensitive)))
-
-    change_files = [
-        {"status": "added", "filename": "Karlin-Z/M1s.cs"},
-        {"status": "removed", "filename": "Karlin-Z/M2s.cs"},
-    ]
-    errors, _, rows = check_change_set(change_files, "Karlin-Z", cfg)
-    expect("改动集合校验通过", not errors and len(rows) == 2, str(errors))
-
-    rename_out = [{
-        "status": "renamed", "filename": "Karlin-Z/a.cs", "previous_filename": "Other/a.cs",
-    }]
-    errors, _, _ = check_change_set(rename_out, "Karlin-Z", cfg)
-    expect("从别人文件夹重命名过来被拒绝", bool(errors))
-
-    errors, _, _ = check_change_set(
-        [{"status": "added", "filename": "README.md"}], "Karlin-Z", cfg
-    )
-    expect("改 README 被拒绝", bool(errors))
-
-    bypass_cfg = copy.deepcopy(cfg)
-    bypass_cfg["maintainers"] = ["Karlin-Z"]
-    errors, _, _ = check_change_set(
-        [{"status": "added", "filename": "README.md"}], "Karlin-Z", bypass_cfg
-    )
-    expect("维护者白名单可跳过路径限制", not errors, str(errors))
-
-    # guid 查重
-    guid_map = {GUID: "alice/A.cs"}
-    errs = check_guid_collisions([("bob/B.cs", GUID)], set(), "bob", guid_map, cfg)
-    expect("guid 被别人占用被拒绝",
-           any("已被 alice/A.cs 使用" in e for e in errs), str(errs))
-
-    errs = check_guid_collisions([("alice/B.cs", GUID)], {"alice/B.cs"}, "alice", guid_map, cfg)
-    expect("自己文件夹里 guid 重复被拒绝",
-           any("你自己文件夹" in e for e in errs), str(errs))
-
-    errs = check_guid_collisions(
-        [("alice/sub/A.cs", GUID)], {"alice/A.cs", "alice/sub/A.cs"}, "alice", guid_map, cfg
-    )
-    expect("改名 / 移动自己的文件不算冲突", not errs, str(errs))
-
-    errs = check_guid_collisions([("alice/A.cs", GUID), ("alice/B.cs", GUID)], set(), "alice", {}, cfg)
-    expect("同一个 PR 内 guid 重复被拒绝", any("本次 PR" in e for e in errs), str(errs))
-
-    errs = check_guid_collisions(
-        [("alice/A.cs", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")], set(), "alice", {}, cfg
-    )
-    expect("拿不到映射表时不误报", not errs, str(errs))
-
-    # ignore_dirs 里的文件夹
-    ignore_cfg = copy.deepcopy(cfg)
-    ignore_cfg["ignore_dirs"] = ["skipme"]
-    errs, _w, _r = check_change_set(
-        [{"status": "added", "filename": "skipme/a.cs"}], "skipme", ignore_cfg
-    )
-    expect("作者文件夹在 ignore_dirs 里被拒绝",
-           any("ignore_dirs" in e for e in errs), str(errs))
-
-    # 回归测试：配置拷贝必须是深拷贝
-    probe = default_config()
-    probe["maintainers"].append("__probe__")
-    expect("default_config 返回深拷贝", DEFAULT_CONFIG["maintainers"] == [])
-
-    print()
-    if failures:
-        print(f"❌ 自测失败 {len(failures)} 项：{', '.join(failures)}")
-        return 1
-    print("✅ 全部自测通过")
-    return 0
-
-
 def main() -> int:
+    """命令行入口：无子命令时进入 CI 审核模式。"""
     parser = argparse.ArgumentParser(description="KodakkuAssistScriptLibrary PR 自动审核")
     parser.add_argument("--check-cs", nargs="+", metavar="FILE", help="校验本地 .cs 文件")
     parser.add_argument("--check-json", nargs="+", metavar="FILE", help="校验生成的 OnlineRepo.json")
     parser.add_argument("--owner", help="配合 --check-cs：文件夹名（author 回退用）")
     parser.add_argument("--path-check", metavar="AUTHOR", help="校验路径规则（配合 --path）")
     parser.add_argument("--path", action="append", default=[], help="待校验路径，可重复")
-    parser.add_argument("--selftest", action="store_true", help="运行内置自测")
     args = parser.parse_args()
 
     cfg = load_config()
 
-    if args.selftest:
-        return cmd_selftest()
     if args.check_cs:
         return cmd_check_cs(args.check_cs, args.owner, cfg)
     if args.check_json:
