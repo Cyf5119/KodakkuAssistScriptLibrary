@@ -1,8 +1,9 @@
 name: Build and Deploy Pages
 
 # 访问地址：https://<owner>.github.io/<repo>/
-#   - /index.json  合并后的索引，直接填进 KodakkuAssist 的 OnlineRepo
-#   - /index.html  说明页
+#   - /index.json             合并后的索引，填进 KodakkuAssist 的 OnlineRepo
+#   - /                     说明页（贡献者、脚本数、冲突提示）
+# 另外仓库根目录会生成一份同样的 OnlineRepo.json，可用 raw 直链订阅。
 #
 # 触发方式有两个，缺一不可：
 #   1. push 到 main：维护者直接推送时生效
@@ -14,7 +15,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write # publish-root 需要提交根目录的 OnlineRepo.json
   pages: write
   id-token: write
 
@@ -24,7 +25,7 @@ concurrency:
 
 jobs:
   build:
-    name: 生成合并索引
+    name: 生成索引
     runs-on: ubuntu-latest
     steps:
       - name: 检出仓库
@@ -35,7 +36,7 @@ jobs:
       - name: 配置 Pages
         uses: actions/configure-pages@v6
 
-      - name: 生成合并后的索引
+      - name: 扫描 .cs 并生成合并索引
         run: python3 .github/scripts/merge_repos.py --out _site
 
       - name: 上传站点内容
@@ -54,3 +55,31 @@ jobs:
       - name: 部署到 GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
+
+  publish-root:
+    name: 提交总索引到仓库根目录
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v7
+
+      - name: 生成根目录索引与 guid 映射表
+        run: |
+          python3 .github/scripts/merge_repos.py \
+            --root-json OnlineRepo.json \
+            --guid-map .github/index/guid-map.json \
+            --no-site
+
+      # 内容没变就不提交，避免每次重建都留一条空提交
+      - name: 有变化才提交
+        run: |
+          if [ -z "$(git status --porcelain -- OnlineRepo.json .github/index/guid-map.json)" ]; then
+            echo "索引与 guid 映射表都没有变化，跳过提交"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add OnlineRepo.json .github/index/guid-map.json
+          git commit -m "chore: 自动更新 OnlineRepo.json 与 guid 映射表"
+          git push

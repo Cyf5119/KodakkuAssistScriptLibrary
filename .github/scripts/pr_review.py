@@ -4,18 +4,13 @@
 
 审核规则（见 README.md）：
   1. 只允许改动「以 PR 作者的 GitHub 用户名命名」的第一层文件夹；
-  2. 只允许新增 / 修改 / 删除 .json 文件（重命名要求两端都是 .json）；
-  3. 每个 .json 必须是合法的 UTF-8 JSON —— 顶层为数组，元素对应插件里的
-     KodakkuAssist.Script.OnlineScriptInfo（Interface/ScriptAttribute.cs）：
-     Name / Guid / Version / Author / Repo / DownloadUrl / Note / UpdateInfo / TerritoryIds。
+  2. 只允许新增 / 修改 / 删除 .cs 文件（重命名要求两端都是 .cs）；
+  3. 每个 .cs 必须包含且只包含一处 [ScriptType(...)] 特性，字段合法：
+     Name / Guid / Version / Author / Repo / DownloadUrl / Note / UpdateInfo / TerritoryIds
+     对应插件里的 KodakkuAssist.Script.OnlineScriptInfo（Interface/ScriptAttribute.cs）。
 
-只使用标准库，不依赖任何第三方包；只通过网络 API 读取 PR 内容，从不执行 PR 中的代码。
-
-用法：
-  python3 pr_review.py                                   # CI 模式（由 workflow 调用）
-  python3 pr_review.py --schema-check Karlin-Z/OnlineRepo.json [更多文件...]
-  python3 pr_review.py --path-check Karlin-Z --path Karlin-Z/OnlineRepo.json
-  python3 pr_review.py --selftest                        # 内置自测，不联网
+只使用标准库，不依赖任何第三方包；只通过网络 API 读取 PR 内容，从不执行 PR 中的代码，
+也不会编译 C#——[ScriptType(...)] 是当作文本解析的。
 """
 
 from __future__ import annotations
@@ -32,39 +27,30 @@ import urllib.parse
 import urllib.request
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(os.path.dirname(SCRIPT_DIR))
+if SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, SCRIPT_DIR)
+
+import csharp_meta  # noqa: E402  （同目录）
+
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "pr_review_rules.json")
 
 # --------------------------------------------------------------------------- #
 # 规则常量
 # --------------------------------------------------------------------------- #
 
-#: 条目允许出现的全部字段
+#: 生成的 OnlineRepo.json 里允许出现的字段
 ALLOWED_FIELDS = {
-    "Name",
-    "Guid",
-    "Version",
-    "Author",
-    "Repo",
-    "DownloadUrl",
-    "Note",
-    "UpdateInfo",
-    "TerritoryIds",
+    "Name", "Guid", "Version", "Author", "Repo",
+    "DownloadUrl", "Note", "UpdateInfo", "TerritoryIds",
 }
-
-#: 必须存在且为字符串的字段
 REQUIRED_STRING_FIELDS = ("Name", "Guid", "Version", "Author", "DownloadUrl")
-
-#: 存在时必须为字符串的字段
 OPTIONAL_STRING_FIELDS = ("Repo", "Note", "UpdateInfo")
-
-#: 不允许为空的字段
 NON_EMPTY_FIELDS = ("Name", "Guid", "Version", "Author")
 
 #: 插件用 NuGetVersion 解析 Version（ScriptManager.cs / ScriptBrowserColumn.cs），
 #: 非法值会在 UI 渲染时抛异常，因此这里按 NuGet 版本号格式校验。
-VERSION_RE = re.compile(
-    r"^\d+(\.\d+){0,3}(-[0-9A-Za-z.\-]+)?(\+[0-9A-Za-z.\-]+)?$"
-)
+VERSION_RE = re.compile(r"^\d+(\.\d+){0,3}(-[0-9A-Za-z.\-]+)?(\+[0-9A-Za-z.\-]+)?$")
 UUID_RE = re.compile(
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
     r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
@@ -82,24 +68,32 @@ WINDOWS_RESERVED_NAMES = (
     | {f"LPT{i}" for i in range(1, 10)}
 )
 
-#: 单个 JSON 文件大小上限（防止误提交大文件）
+#: C# 侧 author 参数的默认值，等同于「没写作者」
+AUTHOR_DEFAULT = "Unknown"
+NAME_DEFAULT = "Default Script"
+VERSION_DEFAULT = "0.0.0.1"
+
+#: 已提交的 guid -> 源文件 映射（由 merge_repos.py 生成），用于 PR 阶段查重
+GUID_MAP_PATH = ".github/index/guid-map.json"
+
+#: 单个文件大小上限
 MAX_FILE_BYTES = 2 * 1024 * 1024
-#: GitHub files API 最多返回 3000 个文件
-MAX_FILES_HARD_LIMIT = 3000
 
 DEFAULT_CONFIG = {
     # 用户名与文件夹名比较时是否忽略大小写（GitHub 用户名本身不区分大小写）
     "username_case_insensitive": True,
     # 是否允许在 <用户名>/ 下再建子目录
     "allow_subfolders": True,
-    # 若设为文件名（如 "OnlineRepo.json"），则该名字为强制要求；null 表示不限
-    "required_filename": None,
-    # 出现未知字段时的处理：warn / error / ignore
-    "unknown_fields": "warn",
+    # 贡献者文件夹里允许的文件扩展名
+    "allowed_extensions": [".cs"],
     # 单个 PR 允许改动的文件数上限
     "max_files_per_pr": 100,
-    # 白名单账号：列表中的登录名不受「只能改自己文件夹」限制（仍会校验 JSON）。默认空。
+    # 不参与索引的目录名（任意层级匹配），例如放模板的 examples / templates
+    "ignore_dirs": [],
+    # 白名单账号：列表中的登录名不受「只能改自己文件夹」限制（仍会校验内容）。默认空。
     "maintainers": [],
+    # 生成结果（OnlineRepo.json）里出现未知字段时的处理：warn / error / ignore
+    "unknown_fields": "warn",
 }
 
 STATUS_LABEL = {
@@ -134,8 +128,8 @@ def type_name(value) -> str:
 def default_config() -> dict:
     """返回默认配置的深拷贝。
 
-    DEFAULT_CONFIG 里含有 list（maintainers），浅拷贝会让调用方就地修改时污染默认值，
-    进而影响同进程后续所有 load_config() 的结果。
+    DEFAULT_CONFIG 里含有 list（maintainers / allowed_extensions），浅拷贝会让调用方
+    就地修改时污染默认值，进而影响同进程后续所有 load_config() 的结果。
     """
     return copy.deepcopy(DEFAULT_CONFIG)
 
@@ -189,7 +183,7 @@ def check_filename_component(value: str, label: str, errors: list):
 
 
 def check_path_rules(path, author, cfg, errors, ctx):
-    """校验单个路径是否满足「自己的文件夹 / 仅 .json」两条规则。"""
+    """校验单个路径是否满足「自己的文件夹 / 只允许指定扩展名」两条规则。"""
     if not isinstance(path, str) or not path:
         errors.append(f"{ctx}：路径为空或非法")
         return
@@ -206,7 +200,7 @@ def check_path_rules(path, author, cfg, errors, ctx):
     if len(parts) < 2:
         errors.append(
             f"{ctx}：文件 {path!r} 必须放在以你的 GitHub 用户名命名的文件夹里，"
-            f"例如 {author}/OnlineRepo.json"
+            f"例如 {author}/MyScript.cs"
         )
         return
 
@@ -223,27 +217,185 @@ def check_path_rules(path, author, cfg, errors, ctx):
     if not cfg.get("allow_subfolders", True) and len(parts) > 2:
         errors.append(f"{ctx}：不允许在 {folder}/ 下创建子文件夹（{path!r}）")
 
+    extensions = tuple(str(e).lower() for e in cfg.get("allowed_extensions", [".cs"]))
     filename = parts[-1]
-    if not filename.lower().endswith(".json"):
-        errors.append(f"{ctx}：只允许 .json 文件，{filename!r} 不合法")
-
-    required = cfg.get("required_filename")
-    if required and filename != required:
-        errors.append(f"{ctx}：文件名必须是 {required!r}，实际为 {filename!r}")
+    if not filename.lower().endswith(extensions):
+        errors.append(
+            f"{ctx}：只允许 {' / '.join(extensions)} 文件，{filename!r} 不合法"
+        )
 
 
 # --------------------------------------------------------------------------- #
-# 规则 3：JSON 合规性校验
+# 规则 3：.cs 里的 ScriptType 特性
+# --------------------------------------------------------------------------- #
+
+
+def validate_script_file(text: str, rel_path: str, folder_owner: str, cfg: dict):
+    """校验一个 .cs 文件，返回 (meta, errors, warnings)。有错误时 meta 为 None。"""
+    errors: list = []
+    warnings: list = []
+
+    def err(msg):
+        errors.append(f"{rel_path}：{msg}")
+
+    def warn(msg):
+        warnings.append(f"{rel_path}：{msg}")
+
+    params, parse_errors = csharp_meta.extract_script_type(text)
+    if parse_errors:
+        for item in parse_errors:
+            err(item)
+        return None, errors, warnings
+
+    explicit = set(params)
+
+    # 参数值解析不出来时直接报原文，避免后面用「实际是null」这类看不懂的措辞
+    for field, (kind, value) in list(params.items()):
+        if kind == "unknown":
+            if field == "territorys":
+                err(f"territorys 必须是 uint 数组字面量（如 [1226, 1228]），原文：{value!r}")
+            else:
+                err(f"{field} 无法解析，原文：{value!r}")
+        elif kind == "identifier":
+            if field in ("note", "updateInfo"):
+                warn(
+                    f"{field} 引用了标识符 {value!r}，但本文件里找不到对应的 const 声明，"
+                    f"将按空字符串处理"
+                )
+                del params[field]
+            else:
+                err(
+                    f"{field} 引用了标识符 {value!r}，但本文件里找不到对应的 const 声明"
+                    f"（只解析本文件内的 const）"
+                )
+    if errors:
+        return None, errors, warnings
+
+    # guid：构造函数第一个参数，没有默认值
+    guid = ""
+    kind, value = params.get("guid", (None, None))
+    if kind is None:
+        err("缺少 guid 参数")
+    elif kind != "string":
+        err(f"guid 必须是字符串，实际是{type_name(value)}")
+    elif not str(value).strip():
+        err("guid 不能为空")
+    else:
+        guid = str(value).strip()
+
+    # name
+    name = NAME_DEFAULT
+    kind, value = params.get("name", (None, None))
+    if kind is None:
+        warn(f"没有写 name，将使用插件默认的 {NAME_DEFAULT!r}")
+    elif kind != "string":
+        err(f"name 必须是字符串，实际是{type_name(value)}")
+    elif not str(value).strip():
+        err("name 不能为空")
+    else:
+        name = str(value)
+
+    # version
+    version = VERSION_DEFAULT
+    kind, value = params.get("version", (None, None))
+    if kind is None:
+        warn(f"没有写 version，将使用插件默认的 {VERSION_DEFAULT!r}")
+    elif kind != "string":
+        err(f"version 必须是字符串，实际是{type_name(value)}")
+    elif not VERSION_RE.match(str(value).strip()):
+        err(
+            f"version {str(value)!r} 不是合法的版本号 "
+            f"（插件用 NuGetVersion 解析，如 0.0.1 / 0.0.0.9 / 1.0.0-beta）"
+        )
+    else:
+        version = str(value).strip()
+
+    # author：未写或写成默认值 Unknown 时，回退到文件夹名（即 GitHub 用户名）
+    author = ""
+    kind, value = params.get("author", (None, None))
+    if kind is None:
+        author = folder_owner
+        warn(f"没有写 author，改用文件夹名 {folder_owner!r}")
+    elif kind != "string":
+        err(f"author 必须是字符串，实际是{type_name(value)}")
+    else:
+        candidate = str(value).strip()
+        if not candidate or candidate == AUTHOR_DEFAULT:
+            author = folder_owner
+            warn(
+                f"author 是默认值 {candidate or '空'!r}，改用文件夹名 {folder_owner!r}"
+            )
+        else:
+            author = candidate
+
+    # territorys
+    territorys: list = []
+    kind, value = params.get("territorys", (None, None))
+    if kind is None:
+        warn("没有写 territorys，该脚本不会按地图过滤")
+    elif kind == "null":
+        warn("territorys 写成了 null，等同于空数组")
+    elif kind != "array":
+        err(f"territorys 必须是 uint 数组字面量，实际是{type_name(value)}")
+    else:
+        for pos, tid in enumerate(value):
+            if isinstance(tid, bool) or not isinstance(tid, int) or not 0 <= tid <= UINT_MAX:
+                err(f"territorys[{pos}] = {tid!r} 超出 uint 范围（0~{UINT_MAX}）")
+            else:
+                territorys.append(tid)
+
+    # note / updateInfo
+    note = ""
+    kind, value = params.get("note", (None, None))
+    if kind is not None and kind != "string":
+        err(f"note 必须是字符串，实际是{type_name(value)}")
+    elif kind == "string":
+        note = str(value)
+
+    update_info = ""
+    kind, value = params.get("updateInfo", (None, None))
+    if kind is not None and kind != "string":
+        err(f"updateInfo 必须是字符串，实际是{type_name(value)}")
+    elif kind == "string":
+        update_info = str(value)
+
+    # 插件用 "{Name}_{Author}.cs" 作为保存文件名
+    if name.strip():
+        check_filename_component(name, f"{rel_path} 的 name", errors)
+    if author.strip():
+        check_filename_component(author, f"{rel_path} 的 author", errors)
+
+    if guid and not UUID_RE.match(guid):
+        warn(f"guid {guid!r} 不是标准 UUID 格式；插件按字符串处理仍可用，但建议修正")
+
+    if errors:
+        return None, errors, warnings
+
+    return {
+        "guid": guid,
+        "name": name,
+        "version": version,
+        "author": author,
+        "author_explicit": "author" in explicit,
+        "note": note,
+        "update_info": update_info,
+        "territorys": territorys,
+        "explicit": explicit,
+    }, errors, warnings
+
+
+# --------------------------------------------------------------------------- #
+# 生成的 OnlineRepo.json 自检
 # --------------------------------------------------------------------------- #
 
 
 def validate_json_document(text: str, path: str, cfg: dict):
-    """校验 JSON 文本，返回 (errors, warnings)。"""
+    """校验生成出来的 OnlineRepo.json（OnlineScriptInfo 数组）。"""
     errors: list[str] = []
     warnings: list[str] = []
 
     if text.startswith("\ufeff"):
-        warnings.append(f"{path}：文件带有 UTF-8 BOM，已忽略；建议用「无 BOM 的 UTF-8」保存")
+        warnings.append(f"{path}：文件带有 UTF-8 BOM，已忽略")
         text = text[1:]
 
     if not text.strip():
@@ -286,44 +438,22 @@ def validate_entry(idx, entry, path, cfg, errors, warnings, guid_seen, name_seen
             errors.append(f"{label}：{field} 必须是字符串，实际是{type_name(entry[field])}")
 
     for field in OPTIONAL_STRING_FIELDS:
-        if field not in entry:
-            continue
-        value = entry[field]
-        if value is None:
-            errors.append(f"{label}：{field} 不能为 null，会导致插件读取时异常")
-        elif isinstance(value, (dict, list)):
-            errors.append(
-                f"{label}：{field} 必须是字符串，实际是{type_name(value)}，会导致整个文件解析失败"
-            )
-        elif isinstance(value, bool) or isinstance(value, (int, float)):
-            warnings.append(
-                f"{label}：{field} 写成了{type_name(value)}，会被转换成字符串，建议直接写字符串"
-            )
+        if field in entry and not isinstance(entry[field], str):
+            errors.append(f"{label}：{field} 必须是字符串，实际是{type_name(entry[field])}")
 
     for field in NON_EMPTY_FIELDS:
         value = entry.get(field)
         if isinstance(value, str) and not value.strip():
             errors.append(f"{label}：{field} 不能为空")
 
-    for field in ("Name", "Author"):
-        value = entry.get(field)
-        if isinstance(value, str) and value.strip():
-            check_filename_component(value, f"{label} 的 {field}", errors)
-
     version = entry.get("Version")
-    if isinstance(version, str) and version.strip():
-        if not VERSION_RE.match(version.strip()):
-            errors.append(
-                f"{label}：Version {version!r} 不是合法的版本号 "
-                f"（插件用 NuGetVersion 解析，如 0.0.1 / 0.0.0.9 / 1.0.0-beta）"
-            )
+    if isinstance(version, str) and version.strip() and not VERSION_RE.match(version.strip()):
+        errors.append(f"{label}：Version {version!r} 不是合法的版本号")
 
     guid = entry.get("Guid")
     if isinstance(guid, str) and guid.strip():
         if not UUID_RE.match(guid.strip()):
-            warnings.append(
-                f"{label}：Guid {guid!r} 不是标准 UUID 格式，插件可能无法正确识别"
-            )
+            warnings.append(f"{label}：Guid {guid!r} 不是标准 UUID 格式")
         key = guid.strip().lower()
         if key in guid_seen:
             errors.append(f"{label}：Guid 与 {path}[{guid_seen[key]}] 重复")
@@ -346,23 +476,13 @@ def validate_entry(idx, entry, path, cfg, errors, warnings, guid_seen, name_seen
     else:
         for pos, tid in enumerate(entry["TerritoryIds"]):
             if isinstance(tid, bool) or not isinstance(tid, int):
-                errors.append(
-                    f"{label}：TerritoryIds[{pos}] 必须是整数，实际是{type_name(tid)}"
-                )
+                errors.append(f"{label}：TerritoryIds[{pos}] 必须是整数，实际是{type_name(tid)}")
             elif not 0 <= tid <= UINT_MAX:
-                errors.append(
-                    f"{label}：TerritoryIds[{pos}] = {tid} 超出 uint 范围"
-                    f"（0~{UINT_MAX}），会导致整个文件解析失败"
-                )
+                errors.append(f"{label}：TerritoryIds[{pos}] = {tid} 超出 uint 范围")
 
     download = entry.get("DownloadUrl")
-    if isinstance(download, str) and download.strip():
-        if not URL_RE.match(download.strip()):
-            errors.append(f"{label}：DownloadUrl 必须以 http:// 或 https:// 开头")
-        elif not download.strip().lower().startswith("https://"):
-            warnings.append(f"{label}：DownloadUrl 建议使用 https")
-
-    # Repo 不校验内容：插件读取时会用当前订阅地址覆盖它（ScriptManager.cs: info.Repo = repoUrl）
+    if isinstance(download, str) and download.strip() and not URL_RE.match(download.strip()):
+        errors.append(f"{label}：DownloadUrl 必须以 http:// 或 https:// 开头")
 
     unknown = sorted(set(entry) - ALLOWED_FIELDS)
     if unknown:
@@ -427,7 +547,8 @@ def list_changed_files(repo: str, pr_number: str) -> list:
 def fetch_file_bytes(repo: str, path: str, ref: str):
     """读取 PR 中某个文件的原始字节。返回 (data, error_message)。"""
     quoted = urllib.parse.quote(path, safe="/")
-    info = api_json(f"/repos/{repo}/contents/{quoted}?ref={urllib.parse.quote(ref, safe='')}")
+    ref_q = urllib.parse.quote(ref, safe="")
+    info = api_json(f"/repos/{repo}/contents/{quoted}?ref={ref_q}")
     if not isinstance(info, dict) or info.get("type") != "file":
         kind = info.get("type") if isinstance(info, dict) else type_name(info)
         return None, f"只允许普通文件（不允许符号链接 / 子模块 / 目录），实际类型为 {kind}"
@@ -440,7 +561,74 @@ def fetch_file_bytes(repo: str, path: str, ref: str):
         except (ValueError, TypeError) as exc:
             return None, f"内容解码失败：{exc}"
     # 超过 1 MB 时 contents API 不返回 content，改用 raw 媒体类型
-    return api_raw(f"/repos/{repo}/contents/{quoted}?ref={urllib.parse.quote(ref, safe='')}"), None
+    return api_raw(f"/repos/{repo}/contents/{quoted}?ref={ref_q}"), None
+
+
+def load_guid_map(repo: str, ref: str):
+    """读取已提交的 guid -> 源文件 映射。不存在时返回 None（表示本次无法查重）。"""
+    if not ref:
+        return None
+    quoted = urllib.parse.quote(GUID_MAP_PATH, safe="/")
+    try:
+        info = api_json(f"/repos/{repo}/contents/{quoted}?ref={urllib.parse.quote(ref, safe='')}")
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return None
+        raise
+    if not isinstance(info, dict) or not info.get("content"):
+        return None
+    try:
+        data = json.loads(base64.b64decode(info["content"]).decode("utf-8"))
+    except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    return {str(key).lower(): str(value) for key, value in data.items()}
+
+
+def check_guid_collisions(script_guids, own_paths, author, guid_map, cfg):
+    """检查 guid 是否与已有脚本或同一 PR 内的其它文件冲突。
+
+    script_guids: [(路径, guid)]
+    own_paths:    本次 PR 涉及的全部路径（含重命名前路径），用于放行改名/移动
+    guid_map:     已有的 guid -> 源文件；None 表示拿不到、本次不查重
+    """
+    errors: list[str] = []
+
+    seen: dict[str, str] = {}
+    for path, guid in script_guids:
+        key = guid.lower()
+        if key in seen:
+            errors.append(
+                f"{path}：guid {guid} 与本次 PR 里的 {seen[key]} 重复；"
+                f"同一 guid 只会保留一个脚本"
+            )
+        else:
+            seen[key] = path
+
+    if not guid_map:
+        return errors
+
+    for path, guid in script_guids:
+        mapped = guid_map.get(guid.lower())
+        # mapped in own_paths：作者在改名 / 移动自己的文件，不算冲突
+        if not mapped or mapped == path or mapped in own_paths:
+            continue
+        folder = mapped.split("/")[0] if "/" in mapped else mapped
+        same_owner = normalize_login(folder, cfg["username_case_insensitive"]) == normalize_login(
+            author, cfg["username_case_insensitive"]
+        )
+        if same_owner:
+            errors.append(
+                f"{path}：guid {guid} 已被你自己文件夹里的 {mapped} 使用；"
+                f"同一 guid 只会保留一个脚本，请换成互不相同的 guid"
+            )
+        else:
+            errors.append(
+                f"{path}：guid {guid} 已被 {mapped} 使用；"
+                f"插件把相同 guid 视为同一个脚本，请换成唯一的 guid"
+            )
+    return errors
 
 
 # --------------------------------------------------------------------------- #
@@ -449,7 +637,7 @@ def fetch_file_bytes(repo: str, path: str, ref: str):
 
 
 def check_change_set(files, author, cfg):
-    """返回 (errors, warnings, rows)。files 为 GitHub files API 的元素列表。"""
+    """路径层面校验。返回 (errors, warnings, rows)。"""
     errors: list[str] = []
     warnings: list[str] = []
     rows: list[tuple[str, str]] = []
@@ -458,9 +646,17 @@ def check_change_set(files, author, cfg):
     if len(files) > max_files:
         errors.append(f"本 PR 改动了 {len(files)} 个文件，超过上限 {max_files} 个")
 
-    bypass = author in (cfg.get("maintainers") or [])
-    if bypass:
+    # 文件夹名如果被 ignore_dirs 排除，PR 通过也永远不会被收录，提前说清楚
+    ignore_dirs = {normalize_login(str(d), True) for d in (cfg.get("ignore_dirs") or [])}
+    if normalize_login(author, True) in ignore_dirs:
+        errors.append(
+            f"你的文件夹 {author}/ 在 ignore_dirs 排除名单里，不会被收录；请联系维护者"
+        )
+
+    if author in (cfg.get("maintainers") or []):
         warnings.append(f"{author} 在维护者白名单中，跳过「只能修改自己文件夹」限制")
+
+    bypass = author in (cfg.get("maintainers") or [])
 
     for item in files:
         status = item.get("status", "changed")
@@ -483,11 +679,7 @@ def check_change_set(files, author, cfg):
 
 
 def describe(files, errors, warnings):
-    lines = []
-    lines.append("### 改动清单")
-    lines.append("")
-    lines.append("| 状态 | 文件 |")
-    lines.append("| --- | --- |")
+    lines = ["### 改动清单", "", "| 状态 | 文件 |", "| --- | --- |"]
     for label, path in files:
         lines.append(f"| {label} | `{path}` |")
     lines.append("")
@@ -511,16 +703,14 @@ def describe(files, errors, warnings):
         lines.append("")
 
     lines.append(
-        "> 规则：只能修改以自己 GitHub 用户名命名的文件夹，且只能新增 / 修改 / 删除 `.json`；"
-        "JSON 顶层必须是数组，条目字段见 `README.md`。"
+        "> 规则：只能修改以自己 GitHub 用户名命名的文件夹，只能新增 / 修改 / 删除 `.cs`，"
+        "每个 `.cs` 必须包含且只包含一处 `[ScriptType(...)]`。详见 `README.md`。"
     )
     return "\n".join(lines)
 
 
 def build_report(title, rows, errors, warnings):
-    body = [f"## 🤖 PR 自动审核：{title}", ""]
-    body.append(describe(rows, errors, warnings))
-    return "\n".join(body)
+    return "\n".join([f"## 🤖 PR 自动审核：{title}", "", describe(rows, errors, warnings)])
 
 
 def write_step_summary(markdown: str):
@@ -567,10 +757,11 @@ def run_ci() -> int:
         write_step_summary(f"## 🤖 PR 自动审核：无法执行\n\n{message}\n")
         try:
             post_comment(repo, pr_number, f"## 🤖 PR 自动审核：无法执行\n\n{message}\n\n未做合并，请维护者手动检查。")
-        except Exception:  # noqa: BLE001 - 留言失败不应掩盖原始错误
+        except Exception:  # noqa: BLE001
             pass
         return 2
 
+    script_guids: list[tuple[str, str]] = []
     if not files:
         errors = ["该 PR 没有包含任何文件改动"]
         warnings: list[str] = []
@@ -595,9 +786,33 @@ def run_ci() -> int:
             except UnicodeDecodeError as exc:
                 errors.append(f"{path}：不是合法的 UTF-8 编码（{exc}）")
                 continue
-            file_errors, file_warnings = validate_json_document(text, path, cfg)
+
+            folder_owner = path.split("/")[0] if "/" in path else author
+            meta, file_errors, file_warnings = validate_script_file(
+                text, path, folder_owner, cfg
+            )
             errors.extend(file_errors)
             warnings.extend(file_warnings)
+            if meta:
+                script_guids.append((path, meta["guid"]))
+
+        # guid 查重：拿仓库里已提交的映射表比对（改名/移动自己的文件不算冲突）
+        own_paths = set()
+        for item in files:
+            if item.get("filename"):
+                own_paths.add(item["filename"])
+            if item.get("previous_filename"):
+                own_paths.add(item["previous_filename"])
+
+        base_ref = os.environ.get("PR_BASE_REF") or os.environ.get("PR_BASE_SHA", "")
+        guid_map = None
+        try:
+            guid_map = load_guid_map(repo, base_ref)
+        except (urllib.error.URLError, OSError, ValueError) as exc:
+            print(f"::warning::无法读取 guid 映射表，本次跳过 guid 查重：{exc}")
+        if guid_map is None and base_ref:
+            print(f"::notice::{GUID_MAP_PATH} 尚不存在，本次跳过 guid 查重")
+        errors.extend(check_guid_collisions(script_guids, own_paths, author, guid_map, cfg))
 
     if errors:
         report = build_report("❌ 未通过", rows, errors, warnings)
@@ -614,11 +829,7 @@ def run_ci() -> int:
     write_step_summary(report)
     if warnings:
         try:
-            post_comment(
-                repo,
-                pr_number,
-                report + "\n校验通过，将自动 squash 合并。",
-            )
+            post_comment(repo, pr_number, report + "\n校验通过，将自动 squash 合并。")
         except Exception as exc:  # noqa: BLE001
             print(f"::warning::无法在 PR 下留言：{exc}")
     return 0
@@ -629,7 +840,7 @@ def run_ci() -> int:
 # --------------------------------------------------------------------------- #
 
 
-def cmd_schema_check(paths, cfg) -> int:
+def cmd_check_json(paths, cfg) -> int:
     exit_code = 0
     for path in paths:
         try:
@@ -654,6 +865,56 @@ def cmd_schema_check(paths, cfg) -> int:
             exit_code = 1
         else:
             print(f"✅ {path} 通过")
+    return exit_code
+
+
+def infer_owner(path: str) -> str:
+    """本地校验时推断文件夹名（即 author 回退用的值）。
+
+    优先按相对仓库根目录的第一层目录判断；文件在仓库外时退化为其父目录名。
+    """
+    absolute = os.path.abspath(path)
+    try:
+        rel = os.path.relpath(absolute, REPO_ROOT).replace("\\", "/")
+    except ValueError:
+        rel = ""
+    if rel and not rel.startswith(".."):
+        parts = rel.split("/")
+        if len(parts) >= 2:
+            return parts[0]
+    return os.path.basename(os.path.dirname(absolute)) or "unknown"
+
+
+def cmd_check_cs(paths, owner, cfg) -> int:
+    exit_code = 0
+    for path in paths:
+        try:
+            with open(path, "rb") as fh:
+                data = fh.read()
+        except OSError as exc:
+            print(f"{path}：无法读取 —— {exc}")
+            exit_code = 2
+            continue
+        try:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            print(f"{path}：不是合法的 UTF-8 编码（{exc}）")
+            exit_code = 1
+            continue
+        folder_owner = owner or infer_owner(path)
+        meta, errors, warnings = validate_script_file(text, path, folder_owner, cfg)
+        for item in warnings:
+            print(f"⚠️  {item}")
+        for item in errors:
+            print(f"❌ {item}")
+        if errors:
+            exit_code = 1
+        else:
+            print(
+                f"✅ {path} 通过：Name={meta['name']!r} Guid={meta['guid']!r} "
+                f"Version={meta['version']!r} Author={meta['author']!r} "
+                f"TerritoryIds={meta['territorys']}"
+            )
     return exit_code
 
 
@@ -682,173 +943,121 @@ def cmd_selftest() -> int:
             failures.append(name)
             print(f"❌ {name} {detail}")
 
-    valid_entry = {
-        "Name": "M1s绘图",
-        "Guid": "8010d865-7d6d-4c23-92e0-f4b0120e18ac",
-        "Version": "0.0.0.9",
-        "Author": "Karlin",
-        "Repo": "",
-        "DownloadUrl": "https://raw.githubusercontent.com/x/y/main/a.cs",
-        "Note": "",
-        "UpdateInfo": "",
-        "TerritoryIds": [1226],
-    }
-    doc = json.dumps([valid_entry], ensure_ascii=False)
-    errors, warnings = validate_json_document(doc, "f.json", cfg)
-    expect("合法文档通过", not errors, str(errors))
-    expect("合法文档无警告", not warnings, str(warnings))
+    GUID = "8010d865-7d6d-4c23-92e0-f4b0120e18ac"
+    good_cs = (
+        '[ScriptType(name: "M1s绘图", territorys: [1226], guid: "' + GUID + '", '
+        'version: "0.0.0.9", author: "Karlin")]\npublic class M1s { }\n'
+    )
 
-    errors, _ = validate_json_document(doc + ",", "f.json", cfg)
-    expect("尾随逗号被拒绝", bool(errors))
+    meta, errors, warnings = validate_script_file(good_cs, "Karlin-Z/M1s.cs", "Karlin-Z", cfg)
+    expect("合法 .cs 通过", not errors and meta is not None, str(errors))
+    expect("字段提取正确",
+           meta and meta["name"] == "M1s绘图" and meta["guid"] == GUID
+           and meta["version"] == "0.0.0.9" and meta["author"] == "Karlin"
+           and meta["territorys"] == [1226], str(meta))
+    expect("合法 .cs 无提醒", not warnings, str(warnings))
 
-    errors, _ = validate_json_document("{}", "f.json", cfg)
-    expect("顶层非数组被拒绝", bool(errors))
+    # author 回退到文件夹名
+    no_author = good_cs.replace(', author: "Karlin"', "")
+    meta, errors, _ = validate_script_file(no_author, "publisher/A.cs", "publisher", cfg)
+    expect("缺 author 时用文件夹名", not errors and meta["author"] == "publisher", str(errors))
 
-    errors, _ = validate_json_document(json.dumps({"a": 1}) + "", "f.json", cfg)
-    expect("顶层对象被拒绝", bool(errors))
+    unknown_author = good_cs.replace('"Karlin"', '"Unknown"')
+    meta, errors, warnings = validate_script_file(unknown_author, "publisher/A.cs", "publisher", cfg)
+    expect("author=Unknown 时用文件夹名", not errors and meta["author"] == "publisher", str(errors))
+    expect("author 回退有提醒", any("文件夹名" in w for w in warnings), str(warnings))
 
-    broken = dict(valid_entry)
-    broken.pop("Name")
-    errors, _ = validate_json_document(json.dumps([broken]), "f.json", cfg)
-    expect("缺必填字段被拒绝", bool(errors))
+    # 结构性错误
+    _m, errors, _w = validate_script_file("class X {}", "a/A.cs", "a", cfg)
+    expect("没有特性被拒绝", bool(errors))
 
-    bad_type = dict(valid_entry)
-    bad_type["TerritoryIds"] = [True, "1"]
-    errors, _ = validate_json_document(json.dumps([bad_type]), "f.json", cfg)
-    expect("TerritoryIds 非整数被拒绝", bool(errors))
+    two = good_cs + good_cs
+    _m, errors, _w = validate_script_file(two, "a/A.cs", "a", cfg)
+    expect("两处特性被拒绝", any("只能有一处" in e for e in errors), str(errors))
 
-    bad_version = dict(valid_entry)
-    bad_version["Version"] = "v1.0"
-    errors, _ = validate_json_document(json.dumps([bad_version]), "f.json", cfg)
-    expect("Version 格式错误被拒绝", bool(errors))
+    commented = "// " + good_cs.replace("\n", " ") + "\n" + good_cs
+    meta, errors, _w = validate_script_file(commented, "a/A.cs", "a", cfg)
+    expect("注释里的特性不计数", not errors and meta is not None, str(errors))
 
-    dup = dict(valid_entry)
-    errors, _ = validate_json_document(json.dumps([valid_entry, dup]), "f.json", cfg)
-    expect("重复 Guid 被拒绝", bool(errors))
+    no_name = good_cs.replace('name: "M1s绘图", ', "")
+    meta, errors, warnings = validate_script_file(no_name, "a/A.cs", "a", cfg)
+    expect("缺 name 用默认值并提醒",
+           not errors and meta["name"] == "Default Script" and any("name" in w for w in warnings))
 
-    nonstandard_guid = dict(valid_entry)
-    nonstandard_guid["Guid"] = "d99c7e91-9b56-432d-a3a8-49a8586915b7e2a"
-    errors, warnings = validate_json_document(json.dumps([nonstandard_guid]), "f.json", cfg)
-    expect("非标准 Guid 仅告警不报错", not errors and bool(warnings), str(errors))
+    # 字段值错误
+    for title, bad, needle in (
+        ("guid 为空", good_cs.replace(GUID, ""), "guid 不能为空"),
+        ("version 非法", good_cs.replace('"0.0.0.9"', '"v1.0"'), "版本号"),
+        ("territorys 为负数", good_cs.replace("[1226]", "[-1]"), "uint 范围"),
+        ("territorys 超 uint", good_cs.replace("[1226]", f"[{UINT_MAX + 1}]"), "uint 范围"),
+        ("territorys 是字符串数组", good_cs.replace("[1226]", '["1226"]'), "uint 数组"),
+    ):
+        _m, errors, _w = validate_script_file(bad, "a/A.cs", "a", cfg)
+        expect(f"{title} 被拒绝", any(needle in e for e in errors), str(errors))
 
-    errors, warnings = validate_json_document("\ufeff" + doc, "f.json", cfg)
-    expect("BOM 被容忍", not errors and bool(warnings))
+    traversal = good_cs.replace('"M1s绘图"', '"../../pwn"')
+    _m, errors, _w = validate_script_file(traversal, "a/A.cs", "a", cfg)
+    expect("name 含路径穿越被拒绝", any("文件名" in e for e in errors), str(errors))
 
-    unknown = dict(valid_entry)
-    unknown["Extra"] = 1
-    errors, warnings = validate_json_document(json.dumps([unknown]), "f.json", cfg)
-    expect("未知字段默认仅告警", not errors and bool(warnings))
+    reserved = good_cs.replace('"Karlin"', '"CON"')
+    _m, errors, _w = validate_script_file(reserved, "a/A.cs", "a", cfg)
+    expect("author 为 Windows 保留名被拒绝", any("保留" in e for e in errors), str(errors))
 
-    errors, _ = validate_json_document(json.dumps([{"Name": "x"}]), "f.json", cfg)
-    expect("完全不合规对象被拒绝", bool(errors))
+    bad_guid = good_cs.replace(GUID, "d99c7e91-9b56-432d-a3a8-49a8586915b7e2a")
+    _m, errors, warnings = validate_script_file(bad_guid, "a/A.cs", "a", cfg)
+    expect("非标准 guid 仅提醒", not errors and any("UUID" in w for w in warnings), str(errors))
 
-    # --- 依据 OnlineScriptInfo 的真实语义补充的用例 ---
-    negative = dict(valid_entry)
-    negative["TerritoryIds"] = [-1]
-    errors, _ = validate_json_document(json.dumps([negative]), "f.json", cfg)
-    expect("负数 TerritoryIds 被拒绝", bool(errors))
+    # 生成的 json 自检
+    doc = json.dumps([{
+        "Name": "M1s绘图", "Guid": GUID, "Version": "0.0.0.9", "Author": "Karlin",
+        "Repo": "", "DownloadUrl": "https://raw.githubusercontent.com/a/b/main/c.cs",
+        "Note": "", "UpdateInfo": "", "TerritoryIds": [1226],
+    }], ensure_ascii=False)
+    errors, warnings = validate_json_document(doc, "OnlineRepo.json", cfg)
+    expect("生成的 json 通过自检", not errors and not warnings, str(errors))
+    errors, _ = validate_json_document("{}", "OnlineRepo.json", cfg)
+    expect("生成的 json 顶层非数组被拒绝", bool(errors))
 
-    overflow = dict(valid_entry)
-    overflow["TerritoryIds"] = [UINT_MAX + 1]
-    errors, _ = validate_json_document(json.dumps([overflow]), "f.json", cfg)
-    expect("超出 uint 的 TerritoryIds 被拒绝", bool(errors))
-
-    max_tid = dict(valid_entry)
-    max_tid["TerritoryIds"] = [UINT_MAX]
-    errors, _ = validate_json_document(json.dumps([max_tid]), "f.json", cfg)
-    expect("uint 最大值被接受", not errors, str(errors))
-
-    traversal = dict(valid_entry)
-    traversal["Name"] = "../evil"
-    errors, _ = validate_json_document(json.dumps([traversal]), "f.json", cfg)
-    expect("Name 含路径穿越被拒绝", bool(errors))
-
-    reserved = dict(valid_entry)
-    reserved["Author"] = "CON"
-    errors, _ = validate_json_document(json.dumps([reserved]), "f.json", cfg)
-    expect("Author 为 Windows 保留名被拒绝", bool(errors))
-
-    colon = dict(valid_entry)
-    colon["Name"] = "a:b"
-    errors, _ = validate_json_document(json.dumps([colon]), "f.json", cfg)
-    expect("Name 含非法文件名字符被拒绝", bool(errors))
-
-    prerelease = dict(valid_entry)
-    prerelease["Version"] = "1.0.0-beta.1+build5"
-    errors, _ = validate_json_document(json.dumps([prerelease]), "f.json", cfg)
-    expect("NuGet 预发布版本号通过", not errors, str(errors))
-
-    single = dict(valid_entry)
-    single["Version"] = "1"
-    errors, _ = validate_json_document(json.dumps([single]), "f.json", cfg)
-    expect("单段版本号通过", not errors, str(errors))
-
-    repo_value = dict(valid_entry)
-    repo_value["Repo"] = "随便写的值"
-    errors, _ = validate_json_document(json.dumps([repo_value]), "f.json", cfg)
-    expect("Repo 内容不再校验（会被插件覆盖）", not errors, str(errors))
-
-    note_object = dict(valid_entry)
-    note_object["Note"] = {"a": 1}
-    errors, _ = validate_json_document(json.dumps([note_object]), "f.json", cfg)
-    expect("可选字段为对象被拒绝", bool(errors))
-
-    note_number = dict(valid_entry)
-    note_number["Note"] = 123
-    errors, warnings = validate_json_document(json.dumps([note_number]), "f.json", cfg)
-    expect("可选字段为数字仅告警", not errors and bool(warnings))
-
-    null_tid = dict(valid_entry)
-    null_tid["TerritoryIds"] = None
-    errors, _ = validate_json_document(json.dumps([null_tid]), "f.json", cfg)
-    expect("TerritoryIds 为 null 被拒绝", bool(errors))
-
+    # 路径规则
     def path_errors(path, author, config=None):
         collected: list[str] = []
         check_path_rules(path, author, config or cfg, collected, "路径")
         return collected
 
-    expect("正确文件夹通过", not path_errors("Karlin-Z/OnlineRepo.json", "Karlin-Z"))
-    expect("大小写不同通过", not path_errors("karlin-z/OnlineRepo.json", "Karlin-Z"))
-    expect("子目录通过", not path_errors("Karlin-Z/sub/a.json", "Karlin-Z"))
-    expect("改别人文件夹被拒绝", bool(path_errors("Other/a.json", "Karlin-Z")))
-    expect("根目录文件被拒绝", bool(path_errors("OnlineRepo.json", "Karlin-Z")))
-    expect("非 json 被拒绝", bool(path_errors("Karlin-Z/a.cs", "Karlin-Z")))
-    expect("路径穿越被拒绝", bool(path_errors("Karlin-Z/../Other/a.json", "Karlin-Z")))
-    expect("绝对路径被拒绝", bool(path_errors("/Karlin-Z/a.json", "Karlin-Z")))
+    expect("正确文件夹通过", not path_errors("Karlin-Z/M1s.cs", "Karlin-Z"))
+    expect("大小写不同通过", not path_errors("karlin-z/M1s.cs", "Karlin-Z"))
+    expect("子目录通过", not path_errors("Karlin-Z/sub/M1s.cs", "Karlin-Z"))
+    expect("改别人文件夹被拒绝", bool(path_errors("Other/M1s.cs", "Karlin-Z")))
+    expect("根目录文件被拒绝", bool(path_errors("M1s.cs", "Karlin-Z")))
+    expect("非 cs 文件被拒绝", bool(path_errors("Karlin-Z/data.json", "Karlin-Z")))
+    expect("路径穿越被拒绝", bool(path_errors("Karlin-Z/../Other/a.cs", "Karlin-Z")))
+    expect("绝对路径被拒绝", bool(path_errors("/Karlin-Z/a.cs", "Karlin-Z")))
 
     strict_sub = copy.deepcopy(cfg)
     strict_sub["allow_subfolders"] = False
-    expect("禁止子目录时被拒绝", bool(path_errors("Karlin-Z/sub/a.json", "Karlin-Z", strict_sub)))
-
-    strict_name = copy.deepcopy(cfg)
-    strict_name["required_filename"] = "OnlineRepo.json"
-    expect("限定文件名时被拒绝", bool(path_errors("Karlin-Z/other.json", "Karlin-Z", strict_name)))
-    expect("限定文件名时通过", not path_errors("Karlin-Z/OnlineRepo.json", "Karlin-Z", strict_name))
+    expect("禁止子目录时被拒绝", bool(path_errors("Karlin-Z/sub/a.cs", "Karlin-Z", strict_sub)))
 
     case_sensitive = copy.deepcopy(cfg)
     case_sensitive["username_case_insensitive"] = False
-    expect(
-        "区分大小写时被拒绝",
-        bool(path_errors("karlin-z/a.json", "Karlin-Z", case_sensitive)),
-    )
+    expect("区分大小写时被拒绝", bool(path_errors("karlin-z/a.cs", "Karlin-Z", case_sensitive)))
 
     change_files = [
-        {"status": "added", "filename": "Karlin-Z/a.json"},
-        {"status": "removed", "filename": "Karlin-Z/b.json"},
+        {"status": "added", "filename": "Karlin-Z/M1s.cs"},
+        {"status": "removed", "filename": "Karlin-Z/M2s.cs"},
     ]
     errors, _, rows = check_change_set(change_files, "Karlin-Z", cfg)
     expect("改动集合校验通过", not errors and len(rows) == 2, str(errors))
 
-    rename_out = [
-        {
-            "status": "renamed",
-            "filename": "Karlin-Z/a.json",
-            "previous_filename": "Other/a.json",
-        }
-    ]
+    rename_out = [{
+        "status": "renamed", "filename": "Karlin-Z/a.cs", "previous_filename": "Other/a.cs",
+    }]
     errors, _, _ = check_change_set(rename_out, "Karlin-Z", cfg)
     expect("从别人文件夹重命名过来被拒绝", bool(errors))
+
+    errors, _, _ = check_change_set(
+        [{"status": "added", "filename": "README.md"}], "Karlin-Z", cfg
+    )
+    expect("改 README 被拒绝", bool(errors))
 
     bypass_cfg = copy.deepcopy(cfg)
     bypass_cfg["maintainers"] = ["Karlin-Z"]
@@ -857,8 +1066,39 @@ def cmd_selftest() -> int:
     )
     expect("维护者白名单可跳过路径限制", not errors, str(errors))
 
-    # 回归测试：配置拷贝必须是深拷贝。若 default_config() 改回 dict(DEFAULT_CONFIG)，
-    # 下面的就地 append 会污染 DEFAULT_CONFIG，这条断言就会失败。
+    # guid 查重
+    guid_map = {GUID: "alice/A.cs"}
+    errs = check_guid_collisions([("bob/B.cs", GUID)], set(), "bob", guid_map, cfg)
+    expect("guid 被别人占用被拒绝",
+           any("已被 alice/A.cs 使用" in e for e in errs), str(errs))
+
+    errs = check_guid_collisions([("alice/B.cs", GUID)], {"alice/B.cs"}, "alice", guid_map, cfg)
+    expect("自己文件夹里 guid 重复被拒绝",
+           any("你自己文件夹" in e for e in errs), str(errs))
+
+    errs = check_guid_collisions(
+        [("alice/sub/A.cs", GUID)], {"alice/A.cs", "alice/sub/A.cs"}, "alice", guid_map, cfg
+    )
+    expect("改名 / 移动自己的文件不算冲突", not errs, str(errs))
+
+    errs = check_guid_collisions([("alice/A.cs", GUID), ("alice/B.cs", GUID)], set(), "alice", {}, cfg)
+    expect("同一个 PR 内 guid 重复被拒绝", any("本次 PR" in e for e in errs), str(errs))
+
+    errs = check_guid_collisions(
+        [("alice/A.cs", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")], set(), "alice", {}, cfg
+    )
+    expect("拿不到映射表时不误报", not errs, str(errs))
+
+    # ignore_dirs 里的文件夹
+    ignore_cfg = copy.deepcopy(cfg)
+    ignore_cfg["ignore_dirs"] = ["skipme"]
+    errs, _w, _r = check_change_set(
+        [{"status": "added", "filename": "skipme/a.cs"}], "skipme", ignore_cfg
+    )
+    expect("作者文件夹在 ignore_dirs 里被拒绝",
+           any("ignore_dirs" in e for e in errs), str(errs))
+
+    # 回归测试：配置拷贝必须是深拷贝
     probe = default_config()
     probe["maintainers"].append("__probe__")
     expect("default_config 返回深拷贝", DEFAULT_CONFIG["maintainers"] == [])
@@ -871,12 +1111,11 @@ def cmd_selftest() -> int:
     return 0
 
 
-# --------------------------------------------------------------------------- #
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description="KodakkuAssistScriptLibrary PR 自动审核")
-    parser.add_argument("--schema-check", nargs="+", metavar="FILE", help="校验本地 JSON 文件")
+    parser.add_argument("--check-cs", nargs="+", metavar="FILE", help="校验本地 .cs 文件")
+    parser.add_argument("--check-json", nargs="+", metavar="FILE", help="校验生成的 OnlineRepo.json")
+    parser.add_argument("--owner", help="配合 --check-cs：文件夹名（author 回退用）")
     parser.add_argument("--path-check", metavar="AUTHOR", help="校验路径规则（配合 --path）")
     parser.add_argument("--path", action="append", default=[], help="待校验路径，可重复")
     parser.add_argument("--selftest", action="store_true", help="运行内置自测")
@@ -886,8 +1125,10 @@ def main() -> int:
 
     if args.selftest:
         return cmd_selftest()
-    if args.schema_check:
-        return cmd_schema_check(args.schema_check, cfg)
+    if args.check_cs:
+        return cmd_check_cs(args.check_cs, args.owner, cfg)
+    if args.check_json:
+        return cmd_check_json(args.check_json, cfg)
     if args.path_check:
         if not args.path:
             parser.error("--path-check 需要至少一个 --path")

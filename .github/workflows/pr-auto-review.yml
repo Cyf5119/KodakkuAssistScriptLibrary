@@ -40,6 +40,8 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # 用于读取已提交的 guid 映射表做查重（取基线分支当前状态）
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: python3 .github/scripts/pr_review.py
 
       - name: 自动合并（squash）
