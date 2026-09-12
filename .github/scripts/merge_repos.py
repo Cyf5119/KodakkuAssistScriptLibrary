@@ -11,6 +11,7 @@
   - 只扫描仓库第一层里不以 . 或 _ 开头的目录（即贡献者文件夹），进入文件夹后递归全部子目录
   - 每个 .cs 用 pr_review.validate_script_file 校验（与 PR 审核同一套规则）
   - DownloadUrl 自动填成本仓库该 .cs 的 raw 直链
+  - UpdateTime 取该 .cs 的最后提交时间（UTC），未提交时退回文件修改时间
   - 按「文件夹名 -> 文件路径」排序处理，保证输出稳定、可复现
   - 按 Guid（忽略大小写）去重：先出现的生效，冲突列入报告
 
@@ -45,6 +46,7 @@ CANONICAL_FIELD_ORDER = [
     "DownloadUrl",
     "Note",
     "UpdateInfo",
+    "UpdateTime",
     "TerritoryIds",
 ]
 
@@ -118,7 +120,35 @@ def download_url(repo, branch, rel_path):
     )
 
 
-def build_entry(meta, repo, branch, rel_path):
+def _commit_epoch(repo_root, rel_path):
+    """该文件最后一次提交的 Unix 时间戳；取不到（非 git 仓库 / 未提交）时返回 None。"""
+    try:
+        result = subprocess.run(
+            ["git", "-C", repo_root, "log", "-1", "--format=%ct", "--", rel_path],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    stamp = result.stdout.strip()
+    return int(stamp) if stamp.isdigit() else None
+
+
+def last_update_time(repo_root, rel_path):
+    """索引里的 UpdateTime：优先取该文件的最后提交时间，取不到时退回文件修改时间。
+
+    时间统一转成 UTC ISO8601（`2026-09-12T05:45:00Z`），保证同一份内容在
+    不同机器 / 多次生成下结果一致，避免「无改动也提交」。
+    """
+    epoch = _commit_epoch(repo_root, rel_path)
+    if epoch is None:
+        try:
+            epoch = int(os.path.getmtime(os.path.join(repo_root, rel_path)))
+        except OSError:
+            return ""
+    return datetime.fromtimestamp(epoch, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def build_entry(meta, repo, branch, rel_path, update_time):
     """把 validate_script_file 的 meta 组装成 OnlineScriptInfo 字段，并规范字段顺序。"""
     entry = {
         "Name": meta["name"],
@@ -130,6 +160,7 @@ def build_entry(meta, repo, branch, rel_path):
         "DownloadUrl": download_url(repo, branch, rel_path),
         "Note": meta["note"],
         "UpdateInfo": meta["update_info"],
+        "UpdateTime": update_time,
         "TerritoryIds": meta["territorys"],
     }
     return {key: entry[key] for key in CANONICAL_FIELD_ORDER if key in entry}
@@ -166,7 +197,8 @@ def collect(repo_root, cfg, repo, branch):
             skipped.append((rel, errors))
             continue
 
-        records.append((owner, rel, build_entry(meta, repo, branch, rel)))
+        update_time = last_update_time(repo_root, rel)
+        records.append((owner, rel, build_entry(meta, repo, branch, rel, update_time)))
 
     return records, skipped, warnings, file_counts
 

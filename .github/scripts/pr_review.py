@@ -42,10 +42,10 @@ CONFIG_PATH = os.path.join(SCRIPT_DIR, "pr_review_rules.json")
 #: 生成的 OnlineRepo.json 里允许出现的字段
 ALLOWED_FIELDS = {
     "Name", "Guid", "Version", "Author", "Repo",
-    "DownloadUrl", "Note", "UpdateInfo", "TerritoryIds",
+    "DownloadUrl", "Note", "UpdateInfo", "UpdateTime", "TerritoryIds",
 }
 REQUIRED_STRING_FIELDS = ("Name", "Guid", "Version", "Author", "DownloadUrl")
-OPTIONAL_STRING_FIELDS = ("Repo", "Note", "UpdateInfo")
+OPTIONAL_STRING_FIELDS = ("Repo", "Note", "UpdateInfo", "UpdateTime")
 NON_EMPTY_FIELDS = ("Name", "Guid", "Version", "Author")
 
 #: 插件用 NuGetVersion 解析 Version（ScriptManager.cs / ScriptBrowserColumn.cs），
@@ -56,6 +56,8 @@ UUID_RE = re.compile(
     r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 )
 URL_RE = re.compile(r"^https?://[^\s]+$")
+#: merge_repos 写入的 UpdateTime（UTC ISO8601），由 .cs 的最后提交时间生成
+UPDATE_TIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 
 #: OnlineScriptInfo.TerritoryIds 是 HashSet<uint>
 UINT_MAX = 0xFFFFFFFF
@@ -482,6 +484,14 @@ def validate_entry(idx, entry, path, cfg, errors, warnings, guid_seen, name_seen
     download = entry.get("DownloadUrl")
     if isinstance(download, str) and download.strip() and not URL_RE.match(download.strip()):
         errors.append(f"{label}：DownloadUrl 必须以 http:// 或 https:// 开头")
+
+    update_time = entry.get("UpdateTime")
+    if isinstance(update_time, str) and update_time.strip() and not UPDATE_TIME_RE.match(
+        update_time.strip()
+    ):
+        warnings.append(
+            f"{label}：UpdateTime {update_time!r} 不是 UTC ISO8601（形如 2026-09-12T05:45:00Z）"
+        )
 
     unknown = sorted(set(entry) - ALLOWED_FIELDS)
     if unknown:

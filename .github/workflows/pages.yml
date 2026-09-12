@@ -28,10 +28,12 @@ jobs:
     name: 生成索引
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 让 merge_repos 能读到完整历史，用每个 .cs 的最后提交时间生成 UpdateTime
       - name: 检出仓库
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: 配置 Pages
         uses: actions/configure-pages@v6
@@ -65,8 +67,11 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      # 同样需要完整历史，否则 UpdateTime 会退化成检出时间
       - name: 检出仓库
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: 生成根目录索引与 guid 映射表
         run: |
