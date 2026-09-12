@@ -116,8 +116,8 @@ raw 直链，`Repo` 会被插件在订阅时覆盖。
 
 | 地址 | 说明 |
 | --- | --- |
-| `https://raw.githubusercontent.com/<owner>/<repo>/main/OnlineRepo.json` | 仓库根目录的总索引，不依赖 Pages |
-| `https://<owner>.github.io/<repo>/index.json` | Pages 上的同一份索引 |
+| `https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/OnlineRepo.json` | 仓库根目录的总索引，不依赖 Pages |
+| `https://karlin-z.github.io/KodakkuAssistScriptLibrary/index.json` | Pages 上的同一份索引 |
 
 合并由 [`.github/scripts/merge_repos.py`](.github/scripts/merge_repos.py) 完成：
 

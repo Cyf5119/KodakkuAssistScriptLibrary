@@ -1,6 +1,6 @@
 name: Build and Deploy Pages
 
-# 访问地址：https://<owner>.github.io/<repo>/
+# 访问地址：https://karlin-z.github.io/KodakkuAssistScriptLibrary/
 #   - /index.json             合并后的索引，填进 KodakkuAssist 的 OnlineRepo
 #   - /                     说明页（贡献者、脚本数、冲突提示）
 # 另外仓库根目录会生成一份同样的 OnlineRepo.json，可用 raw 直链订阅。
