@@ -234,6 +234,8 @@
     "Version": "0.0.3.1",
     "Author": "Veever",
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/VeeverSW/00-Other/VVToolKit.cs",
+    "Note": "v0.0.3.1\n---------------------------------------------------------\n此工具箱已修改为dev辅助性工具，删除了之前的大部分功能，如无需要请删除\n1. /e vvguid 自动生成新的guid并复制到剪切板\n2. /e vvlist 列出附近最多10个玩家\n鸭门",
+    "UpdateInfo": "v0.0.3.1\n删除了更新提醒的网络报错提示，为版本更新提示加上了脚本名字和作者名字\n鸭门\n----------------------------------\nDeleted the network error message for update checking, added script name and author to update notification.\nDuckmen.",
     "UpdateTime": "2026-09-13T11:35:15Z"
   },
   {
@@ -242,6 +244,8 @@
     "Version": "0.0.0.1",
     "Author": "Veever",
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/VeeverSW/02-A-Realm-Reborn/Guildhests.cs",
+    "Note": "v0.0.0.1\n----- 请在使用前阅读注意事项 以及根据情况修改用户设置 -----\n1. 本脚本为全部行会令的合集，通过当前所在副本ID(CurrentTerritoryId)区分各行会令的机制。\n2. 如果需要某个机制的绘画或者哪里出了问题请在dc@我或者私信我\n3. 标点开关以及本地开关在用户设置里可自行选择\n鸭门\n----------------------------------\n----- Please read the notes before use and adjust user settings as needed. -----\n1. This single script covers every guildhest; each encounter's mechanics are gated by the current territory ID (CurrentTerritoryId).\n2. If you need a draw or notice any issues, @ me on DC or DM me.\n3. The toggle for marking and local marking can be adjusted in the user settings.\n4. TTS not support English, you can turn off TTS in user settings.\nDuckmen.",
+    "UpdateInfo": "v0.0.0.1\n\n鸭门\n----------------------------------\n\nDuckmen.",
     "UpdateTime": "2026-09-13T11:35:15Z",
     "TerritoryIds": [
       190,
@@ -278,6 +282,8 @@
     "Version": "0.0.0.3",
     "Author": "Veever",
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/VeeverSW/02-A-Realm-Reborn/Snowcloak.cs",
+    "Note": "v0.0.0.3\n----- 请在使用前阅读注意事项 以及根据情况修改用户设置 -----\n1. 如果需要某个机制的绘画或者哪里出了问题请在dc@我或者私信我\n鸭门\n----------------------------------\n----- Please read the notes before use and adjust user settings as needed. -----\n1. If you need a draw or notice any issues, @ me on DC or DM me.\nDuckmen.",
+    "UpdateInfo": "v0.0.0.3\n修复了TTS\n鸭门\n----------------------------------\nFixed TTS\nDuckmen.",
     "UpdateTime": "2026-09-13T11:35:15Z",
     "TerritoryIds": [
       1062
@@ -338,6 +344,7 @@
     "Author": "Veever",
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/VeeverSW/03-Heavensward/the-Great-Gubal-Library-Hard.cs",
     "Note": "v0.0.0.2\n1. 如果需要某个机制的绘画或者哪里出了问题请在dc@我或者私信我\n2. Boss1的击退感觉没有必要画所以没有画\n鸭门\n------------------------------\n1. If you need a draw for a mechanic or notice any issues, @ me on DC or DM me.\n2. Boss 1 knockback felt unnecessary to draw, so I just skipped it.\nDuckmen",
+    "UpdateInfo": "v0.0.0.2\n修复了TTS\n鸭门\n----------------------------------\nFixed TTS\nDuckmen.",
     "UpdateTime": "2026-09-13T11:35:15Z",
     "TerritoryIds": [
       578
@@ -386,6 +393,7 @@
     "Author": "Veever",
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/VeeverSW/05-Shadowbringers/Malikah-s-Well.cs",
     "Note": "v0.0.0.2\n1. 如果需要某个机制的绘画或者哪里出了问题请在dc@我或者私信我\n鸭门\n------------------------------\n1. If you need a draw for a mechanic or notice any issues, @ me on DC or DM me.\nDuckmen",
+    "UpdateInfo": "v0.0.0.2\n修复了TTS\n鸭门\n----------------------------------\nFixed TTS\nDuckmen.",
     "UpdateTime": "2026-09-13T11:35:15Z",
     "TerritoryIds": [
       836
@@ -398,6 +406,7 @@
     "Author": "Veever",
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/VeeverSW/05-Shadowbringers/MtGulg.cs",
     "Note": "v0.0.0.3\n1. 如果需要某个机制的绘画或者哪里出了问题请在dc@我或者私信我\n鸭门\n------------------------------\n1. If you need a draw for a mechanic or notice any issues, @ me on DC or DM me.\nDuckmen",
+    "UpdateInfo": "v0.0.0.3\n修复了TTS\n鸭门\n----------------------------------\nFixed TTS\nDuckmen.",
     "UpdateTime": "2026-09-13T11:35:15Z",
     "TerritoryIds": [
       822
@@ -446,6 +455,7 @@
     "Author": "Veever",
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/VeeverSW/06-EndWalker/the-Dead-Ends.cs",
     "Note": "v0.0.0.3\n1. 如果需要某个机制的绘画或者哪里出了问题请在dc@我或者私信我\n2. Boss2击退距离因为缺乏实例所以不确定，如果有未使用防击退的arr可以给我发一份\n鸭门\n------------------------------\n1. If you need a draw for a mechanic or notice any issues, @ me on DC or DM me.\n2. Boss 2 knockback distance is uncertain due to lack of examples.  \n   If you have ARR without anti-knockback used, please send it to me.\nDuckmen",
+    "UpdateInfo": "v0.0.0.3\n修复了TTS\n鸭门\n----------------------------------\nFixed TTS\nDuckmen.",
     "UpdateTime": "2026-09-13T11:35:15Z",
     "TerritoryIds": [
       973
@@ -458,6 +468,7 @@
     "Author": "Veever",
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/VeeverSW/06-EndWalker/the-Final-Day.cs",
     "Note": "v0.0.0.2\n1. 如果需要某个机制的绘画或者哪里出了问题请在dc@我或者私信我\n鸭门\n------------------------------\n1. If you need a draw for a mechanic or notice any issues, @ me on DC or DM me.\nDuckmen",
+    "UpdateInfo": "v0.0.0.2\n修复了TTS\n鸭门\n----------------------------------\nFixed TTS\nDuckmen.",
     "UpdateTime": "2026-09-13T11:35:15Z",
     "TerritoryIds": [
       997
@@ -529,6 +540,8 @@
     "Version": "0.0.0.5",
     "Author": "Tetora & Veever",
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/VeeverSW/07-DawnTrail/Mistwake.cs",
+    "Note": "v0.0.0.5\n----- 请在使用前阅读注意事项 以及根据情况修改用户设置 -----\n----- 请支持南雲鉄虎喵！ 谢谢喵！ -----\n1. 如果需要某个机制的绘画或者哪里出了问题请在dc@我或者私信我\n2. Boss1 的 石头后范围可能不是特别精准, 请在战斗中视情况站位\n鸭门\n----------------------------------\n----- Please read the notes before use and adjust user settings as needed. -----\n----- Please support Tetora! Meow! Thank you! Meow! -----\n1. If you need a draw or notice any issues, @ me on DC or DM me.\n2. The safe zone behind the rock during Boss1 not be perfectly precise. Please adjust your position as needed during the duty.\nDuckmen.",
+    "UpdateInfo": "v0.0.0.5\n修复了TTS\n鸭门\n----------------------------------\nFixed TTS\nDuckmen.",
     "UpdateTime": "2026-09-13T11:35:15Z",
     "TerritoryIds": [
       1314
@@ -541,6 +554,7 @@
     "Author": "Veever",
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/VeeverSW/07-DawnTrail/San-d-Oria-The-Second-Walk.cs",
     "Note": "v0.0.0.5\n1. 如果需要某个机制的绘画或者哪里出了问题请在dc@我或者私信我\n2. Boss1可能会遇到双手直线时间偏长的问题（懒得改了影响不是很大）\n3. Boss3并没有对坦克职业的击退死刑执行自动防击退\n4. 初版Boss2的反射激光和Boss4的复制可能会出现绘制问题（画错，不画）, 请发现后携带arr在dc反馈\n5. Boss2的地板绘制会有一点点小问题，请无视\n6. 游戏崩溃了请务必在频道说，如果没有arr请跟我说一下大概机制和时间并提供[dalamud.log]\n鸭门\n------------------------------\n1. If you need a draw for a mechanic or notice any issues, @ me on DC or DM me.\n2. Boss 1 may have an issue where the double-arm Rect AOE lasts a bit too long.  \n   (Not a big deal so I’m too lazy to fix it.)\n3. Boss 3 does not auto-use anti-knockback for tankbuster knockbacks. \n4. In the initial version, Boss 2’s Energy Ray (reflect laser) and Boss 4’s Duplicate may have drawing issues (wrong/missing).  \n   If you encounter this, please provide an ARR for feedback on DC.\n5. Boss 2’s floor drawing has a small issue — just ignore it.\n6. If the game crashes, please report it in the dc channel.  \n   If no ARR is available, let me know roughly which mechanic and the time it happened, and provide your [dalamud.log].\nDuckmen",
+    "UpdateInfo": "v0.0.0.5\n修复了TTS\n鸭门\n----------------------------------\nFixed TTS\nDuckmen.",
     "UpdateTime": "2026-09-13T11:35:15Z",
     "TerritoryIds": [
       1304
@@ -564,6 +578,8 @@
     "Version": "0.0.0.7",
     "Author": "Veever",
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/VeeverSW/07-DawnTrail/TheWindwardWilds.cs",
+    "Note": "v0.0.0.7\n1. 如果需要某个机制的绘画或者哪里出了问题请在dc@我或者私信我\n2. 绘制结束后精简(删除)了一些TTS，如有哪个地方需要可以反馈给我添加回来\n3. Boss模型和特效缩放比例设置请在用户设置中修改，1为默认值\n鸭门\n----------------------------------\n1. If you need a draw or notice any issues, @ me on DC or DM me.\n2. Cleaned up a few TTS after the drawings. If you need any of them, let me know and I’ll restore them.\n3. Boss Model Scale and VFX Scale can be adjusted in User Settings, 1 is the Game default value.\nDuckmen.",
+    "UpdateInfo": "v0.0.0.7\n修复了TTS\n鸭门\n----------------------------------\nFixed TTS\nDuckmen.",
     "UpdateTime": "2026-09-13T11:35:15Z",
     "TerritoryIds": [
       1300
@@ -575,6 +591,8 @@
     "Version": "0.0.1.0",
     "Author": "Veever",
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/VeeverSW/07-DawnTrail/TheWindwardWildsExtreme.cs",
+    "Note": "v0.0.1.0\n----- 感谢@Usami提供的惰性水晶绘制方法 -----\n----- 请在使用前阅读注意事项 以及根据情况修改用户设置 -----\n1. 如果需要某个机制的绘画或者哪里出了问题请在dc@我或者私信我\n2. 播报左右侧均是以 #面对# Boss为准, 播报的并不是基于boss本体的左右，请注意辨别\n3. 本脚本使用攻略为game8(子言)\n4. 如果想要场景标记请确保你打开了ACT并且安装了鲶鱼精邮差(PostNamazu)插件\n5. 大部分机制处理都依赖于小队成员顺序，请务必确保小队成员顺序正确\n6. 绘制结束后精简(删除)了一些TTS，如有哪个地方需要可以反馈给我添加回来\n7. 分摊机制如果奶妈倒了的话可能会出现一些妙妙bug\n8. 网卡可能会小概率出现一些妙妙bug\n9. 龙闪炮处会有推荐指路和分摊指路，推荐指路为绿色，分摊指路为紫色，请注意区分\n10. Boss模型和特效缩放比例设置请在用户设置中修改，1为默认值\n11. 可以在用户设置中的职能设置来手动设置自己的职能，默认defalutRole为使用可达鸭职能顺序\n鸭门\n----------------------------------\n----- Thanks to @Usami for the distance-based Cracked Crystal drawing method.-----\n----- Please read the notes before use and adjust user settings as needed. -----\n1. If you need a draw or notice any issues, @ me on DC or DM me.\n2. Left/Right notifies are **boss-relative** (based on you facing the boss), \n   not the boss model’s own left/right. Please keep this in mind.\n3. This script follows the Game8 & 子言 guide.\n4. If you want WayMarkers, make sure ACT is running and the PostNamazu plugin is installed.\n5. Most drawing depends on **party list order** — please make sure the party order is correct.\n6. Cleaned up a few TTS after the drawings. If you need any of them, let me know and I’ll restore them.\n7. Stack drawings may behave oddly if a healer goes down.\n8. There may be some odd bugs with network lag.\n9. Wyvern’s Weal now has both recommend and stack guide arrow.\n   The recommended guide arrow is shown in green, and the stack guide arrow is shown in purple.\n10. Boss Model Scale and VFX Scale can be adjusted in User Settings, 1 is the Game default value.\n11. You can now manually set your Role in the User Settings → Role Settings.\n    `默认defalutRole` follows KodakkuAssist’s Role order.\nDuckmen.",
+    "UpdateInfo": "v0.0.1.0\n修复了TTS\n鸭门\n----------------------------------\nFixed TTS\nDuckmen.",
     "UpdateTime": "2026-09-13T11:35:15Z",
     "TerritoryIds": [
       1306
@@ -586,6 +604,8 @@
     "Version": "0.0.0.3",
     "Author": "Veever",
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/VeeverSW/07-DawnTrail/Vault-Oneiron.cs",
+    "Note": "v0.0.0.3\n1. 如果需要某个机制的绘画或者哪里出了问题请在dc@我或者私信我\n鸭门\n------------------------------\n1. If you need a draw for a mechanic or notice any issues, @ me on DC or DM me.\nDuckmen",
+    "UpdateInfo": "v0.0.0.3\n修复了TTS\n鸭门\n----------------------------------\nFixed TTS\nDuckmen.",
     "UpdateTime": "2026-09-13T11:35:15Z",
     "TerritoryIds": [
       1279
@@ -609,6 +629,8 @@
     "Version": "0.0.0.6",
     "Author": "Veever",
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/VeeverSW/07-DawnTrail/the-Clyteum.cs",
+    "Note": "v0.0.0.6\n----- 请在使用前阅读注意事项 以及根据情况修改用户设置 -----\n1. 如果需要某个机制的绘画或者哪里出了问题请在dc@我或者私信我\n2. 小怪部分和一些细节部分后续版本更新\n鸭门\n----------------------------------\n----- Please read the notes before use and adjust user settings as needed. -----\n1. If you need a draw or notice any issues, @ me on DC or DM me.\n2. English version will be added in the future update, I'll update it when XIV strings comp is updated.\n3. Mobs and some details will be added in future updates.\nDuckmen.",
+    "UpdateInfo": "v0.0.0.6\n修复了TTS\n鸭门\n----------------------------------\nFixed TTS\nDuckmen.",
     "UpdateTime": "2026-09-13T11:35:15Z",
     "TerritoryIds": [
       1345
@@ -621,6 +643,7 @@
     "Author": "Veever",
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/VeeverSW/07-DawnTrail/the-Meso-Terminal.cs",
     "Note": "v0.0.0.5\n1. 如果需要某个机制的绘画或者哪里出了问题请在dc@我或者私信我\n2. Boss3 NPC聚集在一起的圆圈绘画如果掉线可能会导致不画\n鸭门\n------------------------------\n1. If you need a draw for a mechanic or notice any issues, @ me on DC or DM me.\n2. Boss 3: The circle draw for Bombardment may fail to draw if you disconnect\nDuckmen",
+    "UpdateInfo": "v0.0.0.5\n修复了TTS\n鸭门\n----------------------------------\nFixed TTS\nDuckmen.",
     "UpdateTime": "2026-09-13T11:35:15Z",
     "TerritoryIds": [
       1292
@@ -644,6 +667,8 @@
     "Version": "0.0.0.2",
     "Author": "Veever & Usami",
     "DownloadUrl": "https://raw.githubusercontent.com/Karlin-Z/KodakkuAssistScriptLibrary/main/VeeverSW/07-DawnTrail/the-Wreath-of-Snakes-Unreal.cs",
+    "Note": "v0.0.0.2\n1. 如果需要某个机制的绘画或者哪里出了问题请在dc@我或者私信我\n2. 刀禁咒分摊强制绑定画双奶（双奶死了的话就听天由命了）\n3. 塔站位绘图按照如下方式\n      MT / D1    ST / D2\n      H1 / D3    H2 / D4\n4. 极神机制还未彻底完成（缺少技能id（其实是懒得去，有朝一日会加的））\n5. 鲶鱼精标点为基础北东南西ABCD标点\n鸭门\n----------------------------------\n1. If you need a draw or notice any issues, @ me on DC or DM me.\n2. For the Forbidden Arts Stack, both healers are hard-locked draw\n   (if both healers die, it’s GG / pray to Hydaelyn xd).\n3. Tower positions are as follows:\n      MT / D1    ST / D2\n      H1 / D3    H2 / D4\n4. EX trial draw are not fully implemented yet (missing skill IDs — honestly just lazy, \n   will add them one day).\n5. PostNamazu markers default to standard N/E/S/W (ABCD).\nDuckmen.",
+    "UpdateInfo": "v0.0.0.2\n修复了TTS\n鸭门\n----------------------------------\nFixed TTS\nDuckmen.",
     "UpdateTime": "2026-09-13T11:35:15Z",
     "TerritoryIds": [
       825,
