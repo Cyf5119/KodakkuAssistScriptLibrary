@@ -75,10 +75,10 @@ def _copy_quoted(text: str, i: int, out: list, quote: str) -> int:
     return i
 
 
-def _copy_verbatim(text: str, i: int, out: list) -> int:
-    """复制 @ 开头的逐字字符串，内部 "" 表示一个引号。"""
-    out.append('@"')
-    i += 2
+def _copy_verbatim_body(text: str, i: int, out: list) -> int:
+    """从开引号处复制逐字字符串的内容（"" 表示一个引号），返回结束下标。"""
+    out.append('"')
+    i += 1
     n = len(text)
     while i < n:
         if text[i] == '"':
@@ -92,6 +92,26 @@ def _copy_verbatim(text: str, i: int, out: list) -> int:
         out.append(text[i])
         i += 1
     return i
+
+
+def _copy_interpolated(text: str, i: int, out: list):
+    """复制 $ / @ 前缀字符串的原文（插值串、逐字串、插值原始串），返回结束下标。
+
+    前缀一起复制进去，插值与转义语义交给 _decode_string 判断。
+    不是字符串字面量（例如单独的 $ 或 @）时返回 None，且不修改 out。
+    """
+    j = i
+    while j < len(text) and text[j] in "$@":
+        j += 1
+    if j == i or j >= len(text) or text[j] != '"':
+        return None
+
+    out.append(text[i:j])
+    if text.startswith('"""', j):
+        return _copy_raw(text, j, out)
+    if "@" in text[i:j]:
+        return _copy_verbatim_body(text, j, out)
+    return _copy_quoted(text, j, out, '"')
 
 
 def _copy_raw(text: str, i: int, out: list) -> int:
@@ -112,15 +132,17 @@ def _copy_raw(text: str, i: int, out: list) -> int:
 def _read_literal(text: str, i: int):
     """从 i 开始读一个字面量的原文，返回 (原文, 结束下标)；读不到则返回 (None, i)。
 
-    支持普通字符串、@ 逐字字符串、三引号原始字符串、单引号字符字面量、整数字面量。
+    支持普通字符串、@ 逐字字符串、$ 插值字符串（含插值原始字符串）、三引号原始字符串、
+    单引号字符字面量、整数字面量。
     """
     if i >= len(text):
         return None, i
 
-    if text[i] == "@" and i + 1 < len(text) and text[i + 1] == '"':
+    if text[i] in "$@":
         scratch: list = []
-        end = _copy_verbatim(text, i, scratch)
-        return "".join(scratch), end
+        end = _copy_interpolated(text, i, scratch)
+        if end is not None:
+            return "".join(scratch), end
 
     if text[i] in '"\'':
         scratch = []
@@ -169,9 +191,11 @@ def strip_comments(text: str) -> str:
                 i += 2
             continue
 
-        if ch == "@" and nxt == '"':
-            i = _copy_verbatim(text, i, out)
-            continue
+        if ch in "$@":
+            end = _copy_interpolated(text, i, out)
+            if end is not None:
+                i = end
+                continue
 
         if ch in '"\'':
             i = _copy_raw(text, i, out) if text.startswith('"""', i) else _copy_quoted(text, i, out, ch)
@@ -357,30 +381,8 @@ def _decode_raw_string(body: str) -> str:
     return "\n".join(lines)
 
 
-def _decode_string(text: str):
-    """把整串字符串字面量还原成 Python 字符串；不是单个字面量则返回 None。"""
-    s = text.strip()
-    if not s:
-        return None
-
-    if s.startswith('@"'):
-        if not s.endswith('"') or len(s) < 3:
-            return None
-        return s[2:-1].replace('""', '"')
-
-    if s.startswith('"""'):
-        quotes = 0
-        while quotes < len(s) and s[quotes] == '"':
-            quotes += 1
-        closing = '"' * quotes
-        if not s.endswith(closing) or len(s) < quotes * 2:
-            return None
-        return _decode_raw_string(s[quotes:len(s) - quotes])
-
-    if not s.startswith('"') or not s.endswith('"') or len(s) < 2:
-        return None
-
-    body = s[1:-1]
+def _decode_escapes(body: str):
+    """还原普通字符串里的转义序列；遇到不认识的转义返回 None。"""
     out: list = []
     i, n = 0, len(body)
     while i < n:
@@ -407,6 +409,98 @@ def _decode_string(text: str):
             continue
         return None
     return "".join(out)
+
+
+def _split_string_prefix(s: str):
+    """拆出字符串字面量的 $ / @ 前缀，返回 (前缀, 余下部分)。"""
+    i = 0
+    while i < len(s) and s[i] in "$@":
+        i += 1
+    return s[:i], s[i:]
+
+
+def _resolve_hole(expression: str, constants: dict | None) -> str:
+    """把插值 {标识符} 换成同文件里对应 const 的字符串值；换不了就原样保留。"""
+    name = expression.strip()
+    if constants and IDENT_RE.fullmatch(name):
+        entry = constants.get(name)
+        if entry and entry[0] == "string":
+            return entry[1]
+    return "{" + expression + "}"
+
+
+def _decode_interpolation(content: str, dollars: int, constants: dict | None) -> str:
+    """处理插值字符串的花括号：连续两组花括号表示字面花括号，{标识符} 尝试取值替换。
+
+    C# 用 $ 的个数决定插值定界符：一个 $ 时是 {expr}，两个 $ 时则是 {{expr}}。
+    这里只认「单个标识符」的插值——复杂表达式原样留在文本里，总好过整段 note 丢失。
+    """
+    if dollars <= 0:
+        return content
+
+    open_brace = "{" * dollars
+    close_brace = "}" * dollars
+    out: list = []
+    i, n = 0, len(content)
+    while i < n:
+        if content.startswith(open_brace * 2, i):
+            out.append(open_brace)
+            i += len(open_brace) * 2
+            continue
+        if content.startswith(close_brace * 2, i):
+            out.append(close_brace)
+            i += len(close_brace) * 2
+            continue
+        if content.startswith(open_brace, i):
+            close = content.find(close_brace, i + len(open_brace))
+            if close == -1:
+                out.append(content[i:])
+                break
+            out.append(_resolve_hole(content[i + len(open_brace):close], constants))
+            i = close + len(close_brace)
+            continue
+        out.append(content[i])
+        i += 1
+    return "".join(out)
+
+
+def _decode_string(text: str, constants: dict | None = None):
+    """把整串字符串字面量还原成 Python 字符串；不是单个字面量则返回 None。
+
+    支持 @ 逐字字符串、$ 插值字符串、三引号原始字符串（含插值原始字符串）。
+    传入 constants 时，插值里的 {标识符} 会尝试用同文件 const 的值替换；替换不了的原样
+    保留（形如 {Version}），避免整段 note 因为含插值就被判成「解析不了」而丢弃。
+    """
+    s = text.strip()
+    if not s:
+        return None
+
+    prefix, rest = _split_string_prefix(s)
+    if not rest.startswith('"'):
+        return None
+    dollars = prefix.count("$")
+    verbatim = "@" in prefix
+
+    if rest.startswith('"""'):
+        quotes = 0
+        while quotes < len(rest) and rest[quotes] == '"':
+            quotes += 1
+        closing = '"' * quotes
+        if not rest.endswith(closing) or len(rest) < quotes * 2:
+            return None
+        content = _decode_raw_string(rest[quotes:len(rest) - quotes])
+        return content if dollars == 0 else _decode_interpolation(content, dollars, constants)
+
+    if not rest.endswith('"') or len(rest) < 2:
+        return None
+
+    if verbatim:
+        content = rest[1:-1].replace('""', '"')
+    else:
+        content = _decode_escapes(rest[1:-1])
+        if content is None:
+            return None
+    return content if dollars == 0 else _decode_interpolation(content, dollars, constants)
 
 
 def _decode_int_array(text: str):
@@ -454,8 +548,20 @@ def decode_value(raw: str, constants: dict | None = None):
     if s in ("null", "default"):
         return "null", None
 
-    if s.startswith(('@"', '"')):
-        value = _decode_string(s)
+    # 字面量拼接：note: "第一行" + "第二行" / note: $"v{Version}" + NoteTail
+    parts = _split_top_level(s, "+")
+    if len(parts) > 1:
+        pieces: list = []
+        for part in parts:
+            kind, value = decode_value(part, constants)
+            if kind != "string":
+                return "unknown", s
+            pieces.append(value)
+        return "string", "".join(pieces)
+
+    _, rest = _split_string_prefix(s)
+    if rest.startswith('"'):
+        value = _decode_string(s, constants)
         return ("string", value) if value is not None else ("unknown", s)
 
     number = _parse_int_literal(s)
@@ -479,8 +585,8 @@ def decode_value(raw: str, constants: dict | None = None):
 # --------------------------------------------------------------------------- #
 
 
-def _read_const_expression(text: str, i: int):
-    """读取 const 的初值：单个字面量，或由 + 连接的多个字面量。"""
+def _read_const_expression(text: str, i: int, constants: dict | None = None):
+    """读取 const 的初值：字面量、同文件里的另一个 const，或由 + 连接的若干项。"""
     values: list = []
     kinds: list = []
     cursor, n = i, len(text)
@@ -490,8 +596,15 @@ def _read_const_expression(text: str, i: int):
             cursor += 1
         literal, end = _read_literal(text, cursor)
         if literal is None:
-            return None
-        kind, decoded = decode_value(literal)
+            # const string UpdateInfo = UpdateStr;  —— 引用同文件里的另一个 const
+            reference = IDENT_RE.match(text, cursor)
+            entry = constants.get(reference.group(0)) if reference and constants else None
+            if entry is None:
+                return None
+            kind, decoded = entry
+            end = reference.end()
+        else:
+            kind, decoded = decode_value(literal, constants)
         if kind in ("unknown", "null", "identifier"):
             return None
         values.append(decoded)
@@ -518,26 +631,34 @@ def collect_constants(text: str) -> dict:
 
         [ScriptType(..., updateInfo: updateInfoStr)]
         public class X {
-            const string updateInfoStr =
-                \"\"\"
-                第一行
-                第二行
-                \"\"\";
+            const string updateInfoStr = <插值原始字符串>;
         }
 
-    注意 const 可能声明在特性之后，所以要先扫全文件再解析特性。
+    注意 const 可能声明在特性之后，也可能引用另一个 const（const string A = B;）或用
+    插值（形如 $"v{Version}"），所以这里反复解析直到取值不再变化；解不出来的环引用被丢弃。
     """
+    decls = [
+        (match.group(2), match.group(1).replace(" ", ""), match.end())
+        for match in CONST_DECL_RE.finditer(text)
+    ]
+
     table: dict = {}
-    for match in CONST_DECL_RE.finditer(text):
-        type_text = match.group(1).replace(" ", "")
-        kind, value = _read_const_expression(text, match.end()) or (None, None)
-        if kind is None:
-            continue
-        if kind == "string" and type_text != "string":
-            continue
-        if kind == "array" and not type_text.endswith("[]"):
-            continue
-        table[match.group(2)] = (kind, value)
+    for _ in range(len(decls) + 1):
+        changed = False
+        for name, type_text, start in decls:
+            result = _read_const_expression(text, start, table)
+            if result is None:
+                continue
+            kind, value = result
+            if kind == "string" and type_text != "string":
+                continue
+            if kind == "array" and not type_text.endswith("[]"):
+                continue
+            if table.get(name) != (kind, value):
+                table[name] = (kind, value)
+                changed = True
+        if not changed:
+            break
     return table
 
 

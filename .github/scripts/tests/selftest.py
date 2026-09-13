@@ -103,6 +103,62 @@ def run_pr_review_checks() -> list[str]:
     meta, errors, _w = validate_script_file(tricky, "a/A.cs", "a", cfg)
     expect("字符字面量 / 字符串不干扰解析", not errors and meta is not None, str(errors))
 
+    # 插值字符串：真实的 note / updateInfo 常写成插值原始字符串，不能因为含插值就整段丢掉
+    q3 = '"' * 3
+    interpolated = (
+        '[ScriptType(name: "N", guid: "' + GUID + '", version: "0.0.0.9", '
+        'author: "A", territorys: [1226], note: NoteStr, updateInfo: UpdateInfo)]\n'
+        "public class S {\n"
+        "    const string NoteStr =\n"
+        f'    ${q3}\n'
+        "    v{Version} 说明\n"
+        f"    {q3};\n"
+        '    const string Version = "1.2.3";\n'
+        '    const string UpdateStr = $"v{Version} 更新";\n'
+        "    const string UpdateInfo = UpdateStr;\n"
+        "}\n"
+    )
+    meta, errors, warnings = validate_script_file(interpolated, "a/A.cs", "a", cfg)
+    expect("插值 const / const 引用 const 被识别且不报警",
+           not errors and not warnings, str(errors) + str(warnings))
+    expect("插值里的 {const} 被替换成实际值",
+           meta is not None and meta["note"] == "v1.2.3 说明"
+           and meta["update_info"] == "v1.2.3 更新", str(meta))
+
+    unresolved = (
+        '[ScriptType(name: "N", guid: "' + GUID + '", version: "0.0.0.9", '
+        'author: "A", territorys: [1226], note: $"v{Missing} 说明")]\npublic class S { }\n'
+    )
+    meta, errors, warnings = validate_script_file(unresolved, "a/A.cs", "a", cfg)
+    expect("解不出来的插值原样保留，不报错",
+           not errors and not warnings and meta["note"] == "v{Missing} 说明",
+           str(meta) + str(errors) + str(warnings))
+
+    double_dollar = (
+        '[ScriptType(name: "N", guid: "' + GUID + '", version: "0.0.0.9", '
+        'author: "A", territorys: [1226], note: Two)]\n'
+        "public class S {\n"
+        '    const string Version = "1.2.3";\n'
+        f"    const string Two = $${q3}\n"
+        "    v{{Version}} 价格 {100}\n"
+        f"    {q3};\n"
+        "}\n"
+    )
+    meta, errors, warnings = validate_script_file(double_dollar, "a/A.cs", "a", cfg)
+    expect("两个 $ 时只有双花括号才是插值",
+           not errors and not warnings and meta["note"] == "v1.2.3 价格 {100}",
+           str(meta) + str(errors) + str(warnings))
+
+    concat = (
+        '[ScriptType(name: "N", guid: "' + GUID + '", version: "0.0.0.9", '
+        'author: "A", territorys: [1226], note: "a" + $"b{Version}")]\n'
+        'public class S { const string Version = "9"; }\n'
+    )
+    meta, errors, warnings = validate_script_file(concat, "a/A.cs", "a", cfg)
+    expect("属性里内联写 + 拼接字面量也能还原",
+           not errors and not warnings and meta["note"] == "ab9",
+           str(meta) + str(errors) + str(warnings))
+
     no_name = good_cs.replace('name: "M1s绘图", ', "")
     meta, errors, warnings = validate_script_file(no_name, "a/A.cs", "a", cfg)
     expect("缺 name 用默认值并提醒",
